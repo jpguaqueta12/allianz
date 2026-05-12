@@ -1,0 +1,25 @@
+# Node / Frontend
+front-planificacion/node_modules/
+front-planificacion/dist/
+front-planificacion/.env
+front-planificacion/.env.local
+front-planificacion/.env.*.local
+
+# Python / Backend
+back-planificacion/__pycache__/
+back-planificacion/*.pyc
+back-planificacion/*.pyo
+back-planificacion/.env
+back-planificacion/venv/
+back-planificacion/.venv/
+back-planificacion/*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs y archivos personales
+*.xlsx
+*.xls
+*.docx
+*.pdf

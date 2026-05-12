@@ -1,0 +1,104 @@
+from pydantic import BaseModel
+from typing import Optional
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+
+
+class InitSessionRequest(BaseModel):
+    user: str = "planificador"
+
+
+class AsignarResponsableRequest(BaseModel):
+    nombre: str
+
+
+class CreatePiRequest(BaseModel):
+    nombre: str
+    fecha_inicio: str
+    fecha_fin: str
+    dias_laborables: int
+    horas_por_dia: int = 8
+    descripcion: Optional[str] = None
+
+
+class UpdatePiRequest(BaseModel):
+    nombre: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    dias_laborables: Optional[int] = None
+    horas_por_dia: Optional[int] = None
+    descripcion: Optional[str] = None
+    estado: Optional[str] = None
+
+
+class AddFestivoRequest(BaseModel):
+    fecha: str
+    nombre: str
+
+
+class AddPersonaCapacidadRequest(BaseModel):
+    nombre: str
+    apellidos: str
+    tecnologia: str
+
+
+class AddProyectoCapacidadRequest(BaseModel):
+    nombre: str
+    identi: str
+    modulo: str
+
+
+class FechaAsignacionRequest(BaseModel):
+    fecha_asignacion: Optional[str] = None
+
+
+class EscalamientoRequest(BaseModel):
+    fecha_escalado: Optional[str] = None
+    fecha_reinicio: Optional[str] = None
+
+
+class StatusRequest(BaseModel):
+    status: str
+
+
+class PlanificacionItemRequest(BaseModel):
+    responsable: Optional[str] = None
+    perfil: str
+    fase: str
+    horas: Optional[float] = None
+
+
+class PlanificacionRequest(BaseModel):
+    # Responsable por tecnología
+    responsable_java:       Optional[str] = None
+    responsable_cobol:      Optional[str] = None
+    responsable_dialogue:   Optional[str] = None
+    responsable_parametria: Optional[str] = None
+    responsable_qa:         Optional[str] = None
+    fecha_asignacion:       Optional[str] = None
+    # ANALISIS
+    horas_analisis_java:       Optional[float] = None
+    horas_analisis_cobol:      Optional[float] = None
+    horas_analisis_dialogue:   Optional[float] = None
+    horas_analisis_parametria: Optional[float] = None
+    horas_analisis_qa:         Optional[float] = None
+    # DESARROLLO
+    horas_desarrollo_java:       Optional[float] = None
+    horas_desarrollo_cobol:      Optional[float] = None
+    horas_desarrollo_dialogue:   Optional[float] = None
+    horas_desarrollo_parametria: Optional[float] = None
+    # PRUEBAS
+    horas_pruebas_java:       Optional[float] = None
+    horas_pruebas_cobol:      Optional[float] = None
+    horas_pruebas_dialogue:   Optional[float] = None
+    horas_pruebas_parametria: Optional[float] = None
+    # AF. RIESGO
+    horas_af_java:       Optional[float] = None
+    horas_af_cobol:      Optional[float] = None
+    horas_af_dialogue:   Optional[float] = None
+    horas_af_parametria: Optional[float] = None
+    horas_af_qa:         Optional[float] = None
+    planificacion_items: Optional[list[PlanificacionItemRequest]] = None

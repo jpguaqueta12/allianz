@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #f7f9fc;
+  color: #172033;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+@layer components {
+  .corporate-panel {
+    border-radius: 0.375rem;
+    border: 1px solid #dde3ea;
+    background: #ffffff;
+    box-shadow: 0 1px 2px 0 rgb(16 24 40 / 0.05);
+  }
+
+  .corporate-table {
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #ffffff;
+    font-size: 0.875rem;
+  }
+
+  .corporate-table thead {
+    background: #f7f9fc;
+    color: #667085;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+
+  .corporate-table th {
+    border-bottom: 1px solid #dde3ea;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+  }
+
+  .corporate-table td {
+    border-bottom: 1px solid #f3f4f6;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .corporate-button-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.375rem;
+    background: #003781;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #ffffff;
+    transition: background-color 150ms ease;
+  }
+
+  .corporate-button-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.375rem;
+    border: 1px solid #dde3ea;
+    background: #ffffff;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #172033;
+    transition: border-color 150ms ease, color 150ms ease;
+  }
+
+  .corporate-button-primary:hover {
+    background: #0066cc;
+  }
+
+  .corporate-button-secondary:hover {
+    border-color: #003781;
+    color: #003781;
+  }
+
+  .corporate-button-primary:disabled,
+  .corporate-button-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
