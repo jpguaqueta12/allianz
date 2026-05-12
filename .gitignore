@@ -14,6 +14,10 @@ back-planificacion/venv/
 back-planificacion/.venv/
 back-planificacion/*.egg-info/
 
+# Editor
+.vscode/
+.idea/
+
 # OS
 .DS_Store
 Thumbs.db

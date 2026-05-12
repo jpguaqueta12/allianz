@@ -14,11 +14,11 @@ class Settings(BaseSettings):
     # App
     app_name: str = "Planificador Allianz - NTT DATA"
     app_version: str = "1.0.0"
-    debug: bool
-    backend_port: int
-    frontend_port: int
-    app_host: str
-    vite_api_proxy_target: str
+    debug: bool = False
+    backend_port: int = 8001
+    frontend_port: int = 5174
+    app_host: str = "0.0.0.0"
+    vite_api_proxy_target: str = ""
 
     # Azure OpenAI
     azure_openai_endpoint: str
