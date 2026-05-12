@@ -23,7 +23,11 @@ export async function startChat(
     body: JSON.stringify({ session_id, message }),
   })
   if (!r.ok) throw new Error('Error iniciando chat')
-  return r.json()
+  const data = await r.json()
+  if (data.stream_url?.startsWith('/')) {
+    data.stream_url = `${API_ORIGIN}${data.stream_url}`
+  }
+  return data
 }
 
 function withPi(path: string, piId?: number | null): string {
