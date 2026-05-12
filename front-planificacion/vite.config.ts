@@ -3,23 +3,18 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '../back-planificacion', '')
-  const frontendPort = Number(env.FRONTEND_PORT)
+  const frontendPort = Number(env.FRONTEND_PORT) || 5174
   const apiProxyTarget = env.VITE_API_PROXY_TARGET
 
-  if (!frontendPort) {
-    throw new Error('FRONTEND_PORT debe estar definido en back-planificacion/.env')
-  }
-  if (!apiProxyTarget) {
-    throw new Error('VITE_API_PROXY_TARGET debe estar definido en back-planificacion/.env')
-  }
+  const isDev = mode === 'development'
 
   return {
     plugins: [react()],
-    server: {
+    server: isDev ? {
       port: frontendPort,
-      proxy: {
-        '/api': apiProxyTarget,
-      },
-    },
+      ...(apiProxyTarget && {
+        proxy: { '/api': apiProxyTarget },
+      }),
+    } : {},
   }
 })
