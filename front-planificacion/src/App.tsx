@@ -122,13 +122,13 @@ function Layout() {
 
       <main className="flex-1 overflow-hidden">
         <Routes>
-          <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-          <Route path="/fabrica" element={<ProtectedRoute><FabricaPage /></ProtectedRoute>} />
-          <Route path="/incidentes" element={<ProtectedRoute><IncidentesPage /></ProtectedRoute>} />
-          <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
-          <Route path="/upload-incidentes" element={<ProtectedRoute><UploadIncidentesPage /></ProtectedRoute>} />
-          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-          <Route path="/estimacion" element={<ProtectedRoute><EstimationPage /></ProtectedRoute>} />
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/fabrica" element={<FabricaPage />} />
+          <Route path="/incidentes" element={<IncidentesPage />} />
+          <Route path="/upload" element={<UploadPage />} />
+          <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/estimacion" element={<EstimationPage />} />
           <Route
             path="/config"
             element={
@@ -187,7 +187,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/*" element={<Layout />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   )
