@@ -12,7 +12,7 @@ import { UploadIncidentesPage } from './pages/UploadIncidentesPage'
 import { LoginPage } from './pages/LoginPage'
 import { useChatStore } from './stores/chatStore'
 import { useAuthStore } from './stores/authStore'
-import { createSession } from './services/api'
+import { createSession, verifyToken } from './services/api'
 import clsx from 'clsx'
 
 const navItems = [
@@ -153,16 +153,28 @@ function Layout() {
 
 export default function App() {
   const { setSessionId } = useChatStore()
+  const { isSuperUser, token, logout } = useAuthStore()
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    createSession()
-      .then((r) => {
+    const init = async () => {
+      // Si hay sesión guardada en localStorage, verificar que el token sigue vigente
+      if (isSuperUser && token) {
+        const valid = await verifyToken()
+        if (!valid) logout()
+      }
+      // Crear sesión de chat
+      try {
+        const r = await createSession()
         setSessionId(r.session_id)
-        setReady(true)
-      })
-      .catch(() => setReady(true))
-  }, [setSessionId])
+      } catch {
+        // ignorar — la app puede funcionar sin sesión de chat
+      }
+      setReady(true)
+    }
+    init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!ready) {
     return (
