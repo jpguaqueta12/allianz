@@ -5,7 +5,7 @@ import { useAuthStore } from '../stores/authStore'
 import { loginSuperUser } from '../services/api'
 
 export function LoginPage() {
-  const { login, isSuperUser } = useAuthStore()
+  const { login, isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -13,8 +13,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Si ya está autenticado, redirigir directamente a config
-  if (isSuperUser) return <Navigate to="/config" replace />
+  // Si ya está autenticado, redirigir al dashboard
+  if (isAuthenticated) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -22,8 +22,11 @@ export function LoginPage() {
     setLoading(true)
     try {
       const { access_token } = await loginSuperUser(username, password)
-      login(access_token)
-      navigate('/config', { replace: true })
+      // Decodificar el rol del JWT (payload.sub)
+      const payload = JSON.parse(atob(access_token.split('.')[1]))
+      const role = payload.sub === 'superuser' ? 'superuser' : 'user'
+      login(access_token, role)
+      navigate(role === 'superuser' ? '/config' : '/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Credenciales incorrectas')
     } finally {

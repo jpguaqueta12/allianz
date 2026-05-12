@@ -38,12 +38,14 @@ export async function loginSuperUser(
   return r.json()
 }
 
-export async function verifyToken(): Promise<boolean> {
+export async function verifyToken(): Promise<{ valid: boolean; role: 'superuser' | 'user' | null }> {
   try {
-    const r = await authFetch(`${BASE}/auth/me`)
-    return r.ok
+    const r = await authFetch(`${BASE}/auth/me/any`)
+    if (!r.ok) return { valid: false, role: null }
+    const data = await r.json()
+    return { valid: true, role: data.role ?? null }
   } catch {
-    return false
+    return { valid: false, role: null }
   }
 }
 

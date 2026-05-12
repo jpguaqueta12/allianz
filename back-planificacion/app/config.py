@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480  # 8 horas
 
+    # Usuario normal (solo lectura)
+    normal_user: str = "planificador"
+    normal_password_hash: str = "$2b$12$RlaoAqIy295Do8mQroRBs.5he0LsD6p/fLwVkQdu6rRoA/KIWdMLa"
+
 
 
 @lru_cache

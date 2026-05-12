@@ -4,10 +4,11 @@ from typing import Annotated
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from pydantic import BaseModel
 
-from app.auth.dependencies import require_superuser
+from app.auth.dependencies import require_superuser, _decode_token
 from app.config import get_settings
 
 router = APIRouter()
@@ -25,20 +26,23 @@ class TokenResponse(BaseModel):
 
 @router.post("/auth/login", response_model=TokenResponse, tags=["auth"])
 async def login(body: LoginRequest) -> TokenResponse:
-    """Autenticación de superusuario. Devuelve un JWT."""
+    """Autenticación. Acepta superusuario y usuario normal."""
     s = get_settings()
 
-    if body.username != s.super_user:
+    # Determinar qué usuario es y verificar contraseña
+    if body.username == s.super_user:
+        hash_to_check = s.super_password_hash
+        role = "superuser"
+    elif body.username == s.normal_user:
+        hash_to_check = s.normal_password_hash
+        role = "user"
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
         )
 
-    password_matches = bcrypt.checkpw(
-        body.password.encode("utf-8"),
-        s.super_password_hash.encode("utf-8"),
-    )
-    if not password_matches:
+    if not bcrypt.checkpw(body.password.encode("utf-8"), hash_to_check.encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
@@ -46,7 +50,7 @@ async def login(body: LoginRequest) -> TokenResponse:
 
     expire = datetime.now(timezone.utc) + timedelta(minutes=s.jwt_expire_minutes)
     token = jwt.encode(
-        {"sub": "superuser", "exp": expire},
+        {"sub": role, "exp": expire},
         s.secret_key,
         algorithm=s.jwt_algorithm,
     )
@@ -55,6 +59,14 @@ async def login(body: LoginRequest) -> TokenResponse:
 
 
 @router.get("/auth/me", tags=["auth"])
-async def me(_: Annotated[dict, Depends(require_superuser)]):
-    """Verifica si el token actual es válido."""
+async def me(payload: Annotated[dict, Depends(require_superuser)]):
+    """Verifica si el token actual es válido (superusuario)."""
     return {"authenticated": True, "role": "superuser"}
+
+
+@router.get("/auth/me/any", tags=["auth"])
+async def me_any(credentials: Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer(auto_error=True))]):
+    """Verifica si cualquier token válido está activo (superusuario o usuario normal)."""
+    from app.auth.dependencies import _decode_token
+    payload = _decode_token(credentials.credentials)
+    return {"authenticated": True, "role": payload.get("sub")}

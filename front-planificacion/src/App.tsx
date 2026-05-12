@@ -25,10 +25,11 @@ const navItems = [
   { to: '/estimacion', label: 'Estimación', icon: Calculator },
 ]
 
-// Ruta protegida: solo accesible si el usuario es superusuario
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isSuperUser = useAuthStore((s) => s.isSuperUser)
-  if (!isSuperUser) return <Navigate to="/login" replace />
+// Ruta protegida: cualquier usuario autenticado
+function ProtectedRoute({ children, superuserOnly = false }: { children: React.ReactNode; superuserOnly?: boolean }) {
+  const { isAuthenticated, isSuperUser } = useAuthStore()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (superuserOnly && !isSuperUser) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -130,17 +131,17 @@ function Layout() {
 
       <main className="flex-1 overflow-hidden">
         <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/fabrica" element={<FabricaPage />} />
-          <Route path="/incidentes" element={<IncidentesPage />} />
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/estimacion" element={<EstimationPage />} />
+          <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+          <Route path="/fabrica" element={<ProtectedRoute><FabricaPage /></ProtectedRoute>} />
+          <Route path="/incidentes" element={<ProtectedRoute><IncidentesPage /></ProtectedRoute>} />
+          <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+          <Route path="/upload-incidentes" element={<ProtectedRoute><UploadIncidentesPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+          <Route path="/estimacion" element={<ProtectedRoute><EstimationPage /></ProtectedRoute>} />
           <Route
             path="/config"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute superuserOnly>
                 <ConfigPage />
               </ProtectedRoute>
             }
@@ -153,15 +154,19 @@ function Layout() {
 
 export default function App() {
   const { setSessionId } = useChatStore()
-  const { isSuperUser, token, logout } = useAuthStore()
+  const { isAuthenticated, token, logout, login } = useAuthStore()
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const init = async () => {
       // Si hay sesión guardada en localStorage, verificar que el token sigue vigente
-      if (isSuperUser && token) {
-        const valid = await verifyToken()
-        if (!valid) logout()
+      if (isAuthenticated && token) {
+        const { valid, role } = await verifyToken()
+        if (!valid) {
+          logout()
+        } else if (role) {
+          login(token, role)
+        }
       }
       // Crear sesión de chat
       try {
