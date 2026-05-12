@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # Seguridad
     secret_key: str
 
+    # Superusuario
+    super_user: str = "admin"
+    super_password_hash: str = "$2b$12$.8X8I8B5/ANNnyGTz19XceetQ32.V8TX3RLlELT2mDxKloqJB25I6"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480  # 8 horas
+
 
 
 @lru_cache

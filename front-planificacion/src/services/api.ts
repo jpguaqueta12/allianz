@@ -3,6 +3,50 @@ import { AlertaItem, DashboardData, EstimacionResult, Festivo, PiInfo } from '..
 const API_ORIGIN = import.meta.env.VITE_API_BASE_URL ?? ''
 const BASE = `${API_ORIGIN}/api/v1`
 
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+function getAuthHeaders(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('auth-storage')
+    if (!raw) return {}
+    const { state } = JSON.parse(raw) as { state: { token: string | null } }
+    if (!state?.token) return {}
+    return { Authorization: `Bearer ${state.token}` }
+  } catch {
+    return {}
+  }
+}
+
+async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = { 'Content-Type': 'application/json', ...getAuthHeaders(), ...(init.headers as Record<string, string> ?? {}) }
+  return fetch(input, { ...init, headers })
+}
+
+export async function loginSuperUser(
+  username: string,
+  password: string,
+): Promise<{ access_token: string; token_type: string }> {
+  const r = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({ detail: 'Credenciales incorrectas' }))
+    throw new Error(e.detail ?? 'Error de autenticación')
+  }
+  return r.json()
+}
+
+export async function verifyToken(): Promise<boolean> {
+  try {
+    const r = await authFetch(`${BASE}/auth/me`)
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
 export async function createSession(): Promise<{ session_id: string }> {
   const r = await fetch(`${BASE}/session`, {
     method: 'POST',
@@ -58,21 +102,20 @@ export async function crearPersonaEnCapacidad(
   piId: number,
   body: { nombre: string; apellidos: string; tecnologia: string },
 ): Promise<void> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/capacidad/nueva-persona`, {
+  const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/nueva-persona`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 
 export async function removePersonaCapacidad(piId: number, personaId: number): Promise<void> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/capacidad/personas/${personaId}`, { method: 'DELETE' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/personas/${personaId}`, { method: 'DELETE' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 
 export async function sincronizarCapacidadAPI(piId: number): Promise<{ actualizado: number; horas_por_persona: number }> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/capacidad/sincronizar`, { method: 'POST' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/sincronizar`, { method: 'POST' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
 }
@@ -81,16 +124,15 @@ export async function crearProyectoEnCapacidad(
   piId: number,
   body: { nombre: string; identi: string; modulo: string },
 ): Promise<void> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/proyectos/nuevo`, {
+  const r = await authFetch(`${BASE}/config/pis/${piId}/proyectos/nuevo`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 
 export async function removeProyectoCapacidad(piId: number, proyectoId: number): Promise<void> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/proyectos/${proyectoId}`, { method: 'DELETE' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}/proyectos/${proyectoId}`, { method: 'DELETE' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 
@@ -323,16 +365,16 @@ export async function createPi(body: {
   nombre: string; fecha_inicio: string; fecha_fin: string
   dias_laborables: number; horas_por_dia: number; descripcion?: string
 }): Promise<PiInfo> {
-  const r = await fetch(`${BASE}/config/pis`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  const r = await authFetch(`${BASE}/config/pis`, {
+    method: 'POST', body: JSON.stringify(body),
   })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
 }
 
 export async function updatePi(piId: number, body: Partial<PiInfo>): Promise<PiInfo> {
-  const r = await fetch(`${BASE}/config/pis/${piId}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  const r = await authFetch(`${BASE}/config/pis/${piId}`, {
+    method: 'PUT', body: JSON.stringify(body),
   })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
@@ -343,13 +385,13 @@ export async function deletePi(piId: number): Promise<{
   deleted_counts: Record<string, number>
   replacement_pi: PiInfo | null
 }> {
-  const r = await fetch(`${BASE}/config/pis/${piId}`, { method: 'DELETE' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}`, { method: 'DELETE' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
 }
 
 export async function activarPi(piId: number): Promise<PiInfo & { personas_copiadas: number; proyectos_copiados: number }> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/activar`, { method: 'POST' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}/activar`, { method: 'POST' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
 }
@@ -361,15 +403,15 @@ export async function getFestivos(piId: number): Promise<Festivo[]> {
 }
 
 export async function addFestivo(piId: number, fecha: string, nombre: string): Promise<Festivo> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/festivos`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fecha, nombre }),
+  const r = await authFetch(`${BASE}/config/pis/${piId}/festivos`, {
+    method: 'POST', body: JSON.stringify({ fecha, nombre }),
   })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
 }
 
 export async function deleteFestivo(piId: number, festivoId: number): Promise<void> {
-  const r = await fetch(`${BASE}/config/pis/${piId}/festivos/${festivoId}`, { method: 'DELETE' })
+  const r = await authFetch(`${BASE}/config/pis/${piId}/festivos/${festivoId}`, { method: 'DELETE' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 

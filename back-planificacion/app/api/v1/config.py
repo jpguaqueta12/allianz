@@ -1,8 +1,13 @@
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, Depends, HTTPException
+from app.auth.dependencies import require_superuser
 from app.models.requests import AddFestivoRequest, AddPersonaCapacidadRequest, AddProyectoCapacidadRequest, CreatePiRequest, UpdatePiRequest
 
 router = APIRouter()
+
+# ── Alias de dependencia ───────────────────────────────────────────────────────
+SuperUser = Annotated[dict, Depends(require_superuser)]
 
 
 @router.get("/config/pis")
@@ -23,7 +28,7 @@ async def get_pi_activo():
 
 
 @router.post("/config/pis")
-async def create_pi(body: CreatePiRequest):
+async def create_pi(body: CreatePiRequest, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     try:
@@ -36,7 +41,7 @@ async def create_pi(body: CreatePiRequest):
 
 
 @router.put("/config/pis/{pi_id}")
-async def update_pi(pi_id: int, body: UpdatePiRequest):
+async def update_pi(pi_id: int, body: UpdatePiRequest, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     result = await Q.update_pi(get_pool(), pi_id, body.model_dump(exclude_none=True))
@@ -46,7 +51,7 @@ async def update_pi(pi_id: int, body: UpdatePiRequest):
 
 
 @router.delete("/config/pis/{pi_id}")
-async def delete_pi(pi_id: int):
+async def delete_pi(pi_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     try:
@@ -61,7 +66,7 @@ async def delete_pi(pi_id: int):
 
 
 @router.post("/config/pis/{pi_id}/activar")
-async def activar_pi(pi_id: int):
+async def activar_pi(pi_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     result = await Q.activar_pi(get_pool(), pi_id)
@@ -81,7 +86,7 @@ async def capacidad_resumen(pi_id: int):
 
 
 @router.post("/config/pis/{pi_id}/capacidad/nueva-persona")
-async def nueva_persona_capacidad(pi_id: int, body: AddPersonaCapacidadRequest):
+async def nueva_persona_capacidad(pi_id: int, body: AddPersonaCapacidadRequest, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     try:
@@ -93,7 +98,7 @@ async def nueva_persona_capacidad(pi_id: int, body: AddPersonaCapacidadRequest):
 
 
 @router.post("/config/pis/{pi_id}/capacidad/sincronizar")
-async def sincronizar_capacidad(pi_id: int):
+async def sincronizar_capacidad(pi_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     try:
@@ -103,7 +108,7 @@ async def sincronizar_capacidad(pi_id: int):
 
 
 @router.delete("/config/pis/{pi_id}/capacidad/personas/{persona_id}")
-async def remove_persona_capacidad(pi_id: int, persona_id: int):
+async def remove_persona_capacidad(pi_id: int, persona_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     deleted = await Q.remove_persona_de_capacidad(get_pool(), pi_id, persona_id)
@@ -113,7 +118,7 @@ async def remove_persona_capacidad(pi_id: int, persona_id: int):
 
 
 @router.post("/config/pis/{pi_id}/proyectos/nuevo")
-async def nuevo_proyecto_capacidad(pi_id: int, body: AddProyectoCapacidadRequest):
+async def nuevo_proyecto_capacidad(pi_id: int, body: AddProyectoCapacidadRequest, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     try:
@@ -125,7 +130,7 @@ async def nuevo_proyecto_capacidad(pi_id: int, body: AddProyectoCapacidadRequest
 
 
 @router.delete("/config/pis/{pi_id}/proyectos/{proyecto_id}")
-async def remove_proyecto_capacidad(pi_id: int, proyecto_id: int):
+async def remove_proyecto_capacidad(pi_id: int, proyecto_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     deleted = await Q.remove_proyecto_de_capacidad(get_pool(), pi_id, proyecto_id)
@@ -142,14 +147,14 @@ async def get_festivos(pi_id: int):
 
 
 @router.post("/config/pis/{pi_id}/festivos")
-async def add_festivo(pi_id: int, body: AddFestivoRequest):
+async def add_festivo(pi_id: int, body: AddFestivoRequest, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     return await Q.add_festivo(get_pool(), pi_id, body.fecha, body.nombre)
 
 
 @router.delete("/config/pis/{pi_id}/festivos/{festivo_id}")
-async def delete_festivo(pi_id: int, festivo_id: int):
+async def delete_festivo(pi_id: int, festivo_id: int, _: SuperUser):
     from app.db.connection import get_pool
     import app.db.queries as Q
     deleted = await Q.delete_festivo(get_pool(), festivo_id, pi_id)

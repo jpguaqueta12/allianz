@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp } from 'lucide-react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogIn, LogOut, KeyRound } from 'lucide-react'
 import { DashboardPage } from './pages/DashboardPage'
 import { ChatPage } from './pages/ChatPage'
 import { ConfigPage } from './pages/ConfigPage'
@@ -9,7 +9,9 @@ import { FabricaPage } from './pages/FabricaPage'
 import { IncidentesPage } from './pages/IncidentesPage'
 import { UploadPage } from './pages/UploadPage'
 import { UploadIncidentesPage } from './pages/UploadIncidentesPage'
+import { LoginPage } from './pages/LoginPage'
 import { useChatStore } from './stores/chatStore'
+import { useAuthStore } from './stores/authStore'
 import { createSession } from './services/api'
 import clsx from 'clsx'
 
@@ -21,10 +23,18 @@ const navItems = [
   { to: '/upload-incidentes', label: 'Subir Incidentes', icon: FileUp },
   { to: '/chat', label: 'Agente IA', icon: MessageSquare },
   { to: '/estimacion', label: 'Estimación', icon: Calculator },
-  { to: '/config', label: 'Configuración PI', icon: Settings2 },
 ]
 
+// Ruta protegida: solo accesible si el usuario es superusuario
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const isSuperUser = useAuthStore((s) => s.isSuperUser)
+  if (!isSuperUser) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
 function Layout() {
+  const { isSuperUser, logout } = useAuthStore()
+
   return (
     <div className="flex h-screen bg-corporate-surface text-corporate-ink">
       <aside className="flex w-[248px] flex-shrink-0 flex-col border-r border-corporate-line bg-white">
@@ -59,16 +69,62 @@ function Layout() {
               <span>{item.label}</span>
             </NavLink>
           ))}
+
+          {/* Configuración PI — solo visible para superusuario */}
+          {isSuperUser && (
+            <NavLink
+              to="/config"
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-blue-50 text-allianz-blue'
+                    : 'text-corporate-muted hover:bg-corporate-surface hover:text-corporate-ink',
+                )
+              }
+            >
+              <Settings2 size={18} />
+              <span>Configuración PI</span>
+            </NavLink>
+          )}
         </nav>
 
-        <div className="border-t border-corporate-line p-4">
-          <div className="rounded-md border border-green-100 bg-green-50 px-3 py-2">
-            <div className="flex items-center gap-2 text-xs font-medium text-green-800">
-              <ShieldCheck size={14} />
-              Sistema operativo
-            </div>
-            <p className="mt-1 text-[11px] text-green-700">Planificador Allianz operativo</p>
-          </div>
+        <div className="border-t border-corporate-line p-4 flex flex-col gap-2">
+          {isSuperUser ? (
+            <>
+              <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-allianz-blue">
+                  <KeyRound size={14} />
+                  Superusuario activo
+                </div>
+                <p className="mt-0.5 text-[11px] text-blue-600">Acceso total habilitado</p>
+              </div>
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-corporate-muted hover:bg-corporate-surface hover:text-red-600 transition-colors"
+              >
+                <LogOut size={14} />
+                Cerrar sesión
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="rounded-md border border-green-100 bg-green-50 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-green-800">
+                  <ShieldCheck size={14} />
+                  Sistema operativo
+                </div>
+                <p className="mt-1 text-[11px] text-green-700">Planificador Allianz operativo</p>
+              </div>
+              <NavLink
+                to="/login"
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-corporate-muted hover:bg-corporate-surface hover:text-allianz-blue transition-colors"
+              >
+                <LogIn size={14} />
+                Acceso administrador
+              </NavLink>
+            </>
+          )}
         </div>
       </aside>
 
@@ -81,7 +137,15 @@ function Layout() {
           <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/estimacion" element={<EstimationPage />} />
-          <Route path="/config" element={<ConfigPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/config"
+            element={
+              <ProtectedRoute>
+                <ConfigPage />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </main>
     </div>
