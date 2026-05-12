@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogIn, LogOut, KeyRound } from 'lucide-react'
+import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogOut, KeyRound } from 'lucide-react'
 import { DashboardPage } from './pages/DashboardPage'
 import { ChatPage } from './pages/ChatPage'
 import { ConfigPage } from './pages/ConfigPage'
@@ -109,7 +109,6 @@ function Layout() {
               </button>
             </>
           ) : (
-            <>
               <div className="rounded-md border border-green-100 bg-green-50 px-3 py-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-green-800">
                   <ShieldCheck size={14} />
@@ -117,14 +116,6 @@ function Layout() {
                 </div>
                 <p className="mt-1 text-[11px] text-green-700">Planificador Allianz operativo</p>
               </div>
-              <NavLink
-                to="/login"
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-corporate-muted hover:bg-corporate-surface hover:text-allianz-blue transition-colors"
-              >
-                <LogIn size={14} />
-                Acceso administrador
-              </NavLink>
-            </>
           )}
         </div>
       </aside>
