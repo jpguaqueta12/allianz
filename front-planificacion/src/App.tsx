@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
 import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogOut, KeyRound } from 'lucide-react'
 import { DashboardPage } from './pages/DashboardPage'
 import { ChatPage } from './pages/ChatPage'
