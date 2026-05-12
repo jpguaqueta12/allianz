@@ -137,7 +137,6 @@ function Layout() {
           <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/estimacion" element={<EstimationPage />} />
-          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/config"
             element={
@@ -178,7 +177,10 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Layout />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/*" element={<Layout />} />
+      </Routes>
     </BrowserRouter>
   )
 }

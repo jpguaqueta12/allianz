@@ -1,17 +1,20 @@
 import { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import { loginSuperUser } from '../services/api'
 
 export function LoginPage() {
-  const login = useAuthStore((s) => s.login)
+  const { login, isSuperUser } = useAuthStore()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Si ya está autenticado, redirigir directamente a config
+  if (isSuperUser) return <Navigate to="/config" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
