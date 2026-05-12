@@ -3,6 +3,17 @@
     "rewrite": "/index.html",
     "exclude": ["/assets/*", "/*.{js,css,png,svg,ico,woff,woff2}"]
   },
+  "globalHeaders": {
+    "cache-control": "no-store, no-cache, must-revalidate"
+  },
+  "routes": [
+    {
+      "route": "/index.html",
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate"
+      }
+    }
+  ],
   "mimeTypes": {
     ".js": "application/javascript",
     ".mjs": "application/javascript",

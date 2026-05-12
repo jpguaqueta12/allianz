@@ -35,6 +35,12 @@ function ProtectedRoute({ children, superuserOnly = false }: { children: React.R
 
 function Layout() {
   const { isSuperUser, logout } = useAuthStore()
+  const navigate = useNavigate()
+
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="flex h-screen bg-corporate-surface text-corporate-ink">
@@ -92,31 +98,29 @@ function Layout() {
 
         <div className="border-t border-corporate-line p-4 flex flex-col gap-2">
           {isSuperUser ? (
-            <>
-              <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-allianz-blue">
-                  <KeyRound size={14} />
-                  Superusuario activo
-                </div>
-                <p className="mt-0.5 text-[11px] text-blue-600">Acceso total habilitado</p>
+            <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-allianz-blue">
+                <KeyRound size={14} />
+                Superusuario activo
               </div>
-              <button
-                onClick={logout}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-corporate-muted hover:bg-corporate-surface hover:text-red-600 transition-colors"
-              >
-                <LogOut size={14} />
-                Cerrar sesión
-              </button>
-            </>
+              <p className="mt-0.5 text-[11px] text-blue-600">Acceso total habilitado</p>
+            </div>
           ) : (
-              <div className="rounded-md border border-green-100 bg-green-50 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-green-800">
-                  <ShieldCheck size={14} />
-                  Sistema operativo
-                </div>
-                <p className="mt-1 text-[11px] text-green-700">Planificador Allianz operativo</p>
+            <div className="rounded-md border border-green-100 bg-green-50 px-3 py-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-green-800">
+                <ShieldCheck size={14} />
+                Sistema operativo
               </div>
+              <p className="mt-1 text-[11px] text-green-700">Planificador Allianz operativo</p>
+            </div>
           )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-corporate-muted hover:bg-corporate-surface hover:text-red-600 transition-colors"
+          >
+            <LogOut size={14} />
+            Cerrar sesión
+          </button>
         </div>
       </aside>
 
