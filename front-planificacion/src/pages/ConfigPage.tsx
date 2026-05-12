@@ -189,7 +189,8 @@ export function ConfigPage() {
 
   async function getCapSummary(piId: number) {
     try {
-      const r = await fetch(`/api/v1/config/pis/${piId}/capacidad-resumen`)
+      const base = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1`
+      const r = await fetch(`${base}/config/pis/${piId}/capacidad-resumen`)
       if (!r.ok) return null
       return r.json()
     } catch { return null }
