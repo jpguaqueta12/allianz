@@ -1,6 +1,7 @@
 import { AlertaItem, DashboardData, EstimacionResult, Festivo, PiInfo } from '../types'
 
-const BASE = '/api/v1'
+const API_ORIGIN = import.meta.env.VITE_API_BASE_URL ?? ''
+const BASE = `${API_ORIGIN}/api/v1`
 
 export async function createSession(): Promise<{ session_id: string }> {
   const r = await fetch(`${BASE}/session`, {
