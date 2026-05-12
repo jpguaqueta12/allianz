@@ -114,9 +114,16 @@ def _base_connection_string() -> str:
     return conn_str
 
 
+_AD_AUTH_KEYWORDS = (
+    "authentication=activedirectorydefault",
+    "authentication=activedirectorymanagedidentity",
+    "authentication=activedirectoryserviceprincipal",
+)
+
+
 def _connect_sync() -> pyodbc.Connection:
     conn_str = _base_connection_string()
-    if "authentication=activedirectorydefault" in conn_str.lower():
+    if any(kw in conn_str.lower() for kw in _AD_AUTH_KEYWORDS):
         token = _get_access_token()
         return pyodbc.connect(
             _strip_authentication_keywords(conn_str),
