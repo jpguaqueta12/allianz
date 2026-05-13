@@ -103,10 +103,12 @@ export interface BacklogItem {
   total_horas: number | null
   fecha_asignacion: string | null
   fecha_finalizacion: string | null
+  fecha_finalizacion_inicial: string | null
   fecha_escalado: string | null
   fecha_reinicio: string | null
   fecha_entrega: string | null
   etc: number | null
+  escalados: { fecha_escalado: string; fecha_reinicio: string | null }[]
 }
 
 export interface IncidenteItem {

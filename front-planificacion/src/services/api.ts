@@ -315,7 +315,7 @@ export async function updateFechaAsignacion(
   modulo: string,
   ticketId: number,
   fecha: string | null,
-): Promise<{ ok: boolean; fecha_finalizacion: string | null }> {
+): Promise<{ ok: boolean; fecha_finalizacion: string | null; fecha_finalizacion_inicial: string | null }> {
   const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/fecha-asignacion`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -328,14 +328,22 @@ export async function updateFechaAsignacion(
   return r.json()
 }
 
-export interface EscalamientoData {
-  fecha_escalado: string | null
+export interface EscaladoItem {
+  fecha_escalado: string
   fecha_reinicio: string | null
 }
 
-export interface EscalamientoResponse extends EscalamientoData {
+export interface EscalamientoData {
+  escalados: EscaladoItem[]
+}
+
+export interface EscalamientoResponse {
   ok: boolean
+  escalados: EscaladoItem[]
+  fecha_escalado: string | null
+  fecha_reinicio: string | null
   fecha_finalizacion: string | null
+  fecha_finalizacion_inicial: string | null
   etc: number
   status: string | null
 }

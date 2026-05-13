@@ -38,47 +38,82 @@ function addCalendarDays(startIso: string, days: number): string {
   return d.toISOString().split('T')[0]
 }
 
-function calcularFechaFin(item: BacklogItem, piActivo?: PiInfo | null): string | null {
-  if (!item.fecha_asignacion) return null
-
+function _baseHoras(item: BacklogItem): { java: number; cobol: number; calidad: number } {
   let java = 0, cobol = 0, calidad = 0
-
   if (item.planificacion_items?.length) {
     for (const p of item.planificacion_items) {
       const h = p.horas ?? 0
-      if (p.perfil === 'java')       java  += h
-      else if (p.perfil === 'cobol') cobol += h
-      else if (p.perfil === 'calidad') calidad += h
+      if (p.perfil === 'java')           java    += h
+      else if (p.perfil === 'cobol')     cobol   += h
+      else if (p.perfil === 'calidad')   calidad += h
     }
   } else {
-    java  = (item.horas_analisis_java  ?? 0) + (item.horas_desarrollo_java  ?? 0)
-          + (item.horas_pruebas_java   ?? 0) + (item.horas_af_java          ?? 0)
-    cobol = (item.horas_analisis_cobol ?? 0) + (item.horas_desarrollo_cobol ?? 0)
-          + (item.horas_pruebas_cobol  ?? 0) + (item.horas_af_cobol         ?? 0)
-    calidad = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
+    java    = (item.horas_analisis_java  ?? 0) + (item.horas_desarrollo_java  ?? 0)
+            + (item.horas_pruebas_java   ?? 0) + (item.horas_af_java          ?? 0)
+    cobol   = (item.horas_analisis_cobol ?? 0) + (item.horas_desarrollo_cobol ?? 0)
+            + (item.horas_pruebas_cobol  ?? 0) + (item.horas_af_cobol         ?? 0)
+    calidad = (item.horas_analisis_qa   ?? 0) + (item.horas_af_qa            ?? 0)
   }
+  return { java, cobol, calidad }
+}
 
+function calcularFechaFinInicial(item: BacklogItem, piActivo?: PiInfo | null): string | null {
+  if (!item.fecha_asignacion) return null
+  if (item.fecha_finalizacion_inicial) return item.fecha_finalizacion_inicial
+  const { java, cobol, calidad } = _baseHoras(item)
   const totalHoras = Math.max(java, cobol) + calidad
   if (totalHoras <= 0) return null
+  const horasPorDia  = piActivo?.horas_por_dia ?? 8
+  const festivosSet  = new Set((piActivo?.festivos ?? []).map(f => f.fecha))
+  const dias = Math.ceil(totalHoras * 1.15 / horasPorDia)
+  return addWorkingDays(item.fecha_asignacion, dias, festivosSet, horasPorDia)
+}
 
-  const horasPorDia   = piActivo?.horas_por_dia ?? 8
-  const festivosSet   = new Set((piActivo?.festivos ?? []).map(f => f.fecha))
-  const diasLaborables = Math.ceil(totalHoras * 1.15 / horasPorDia)
+function calcularFechaFin(item: BacklogItem, piActivo?: PiInfo | null): string | null {
+  const base = calcularFechaFinInicial(item, piActivo)
+  if (!base) return null
 
-  const base = addWorkingDays(item.fecha_asignacion, diasLaborables, festivosSet, horasPorDia)
-  if (item.fecha_escalado && !item.fecha_reinicio) return null  // escalated, no restart yet
-  if (item.fecha_escalado && item.fecha_reinicio) {
-    const etc = item.etc ?? calendarDaysBetween(item.fecha_escalado, base)
-    return addCalendarDays(item.fecha_reinicio, etc)
+  // Use escalados array; fall back to legacy single-escalation fields
+  const escalados: { fecha_escalado: string; fecha_reinicio: string | null }[] =
+    (item.escalados ?? []).length > 0
+      ? item.escalados
+      : item.fecha_escalado
+        ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+        : []
+
+  let fin: string | null = base
+  for (const esc of escalados) {
+    if (!esc.fecha_escalado || !fin) continue
+    if (!esc.fecha_reinicio) return null  // still escalated at this step
+    const etc = calendarDaysBetween(esc.fecha_escalado, fin)
+    fin = addCalendarDays(esc.fecha_reinicio, etc)
   }
-
-  return base
+  return fin
 }
 
 function calcularEtc(item: BacklogItem, piActivo?: PiInfo | null): number {
-  if (!item.fecha_escalado) return 0
+  const escalados: { fecha_escalado: string; fecha_reinicio: string | null }[] =
+    (item.escalados ?? []).length > 0
+      ? item.escalados
+      : item.fecha_escalado
+        ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+        : []
+
+  if (!escalados.length) return 0
+  const last = escalados[escalados.length - 1]
+  if (!last.fecha_escalado || last.fecha_reinicio) return 0
+
   if (item.etc != null && item.etc > 0) return item.etc
-  return calendarDaysBetween(item.fecha_escalado, calcularFechaFin(item, piActivo))
+
+  // Compute projected fin before last escalation
+  const base = calcularFechaFinInicial(item, piActivo)
+  let fin: string | null = base
+  for (const esc of escalados.slice(0, -1)) {
+    if (!esc.fecha_escalado || !fin) continue
+    if (!esc.fecha_reinicio) break
+    fin = addCalendarDays(esc.fecha_reinicio, calendarDaysBetween(esc.fecha_escalado, fin))
+  }
+  return calendarDaysBetween(last.fecha_escalado, fin)
 }
 
 // ── colores badges ─────────────────────────────────────────────────────────────
@@ -779,7 +814,7 @@ function FechaAsignacionCell({
 }: {
   item: BacklogItem
   modulo: string
-  onSaved: (fecha: string | null, fechaFinalizacion: string | null) => void
+  onSaved: (fecha: string | null, fechaFinalizacion: string | null, fechaFinalizacionInicial?: string | null) => void
 }) {
   const [saving, setSaving] = useState(false)
   const [value, setValue]   = useState(item.fecha_asignacion ?? '')
@@ -807,7 +842,7 @@ function FechaAsignacionCell({
       savingRef.current = true
       setSaving(true)
       updateFechaAsignacion(modulo, item.id, null)
-        .then(res => onSaved(null, res.fecha_finalizacion))
+        .then(res => onSaved(null, res.fecha_finalizacion, res.fecha_finalizacion_inicial))
         .catch(() => { setValue(current); valueRef.current = current })
         .finally(() => { savingRef.current = false; setSaving(false) })
       return
@@ -822,7 +857,7 @@ function FechaAsignacionCell({
     savingRef.current = true
     setSaving(true)
     updateFechaAsignacion(modulo, item.id, trimmed)
-      .then(res => onSaved(trimmed, res.fecha_finalizacion))
+      .then(res => onSaved(trimmed, res.fecha_finalizacion, res.fecha_finalizacion_inicial))
       .catch(() => { setValue(current); valueRef.current = current })
       .finally(() => { savingRef.current = false; setSaving(false) })
   }
@@ -846,77 +881,79 @@ function FechaAsignacionCell({
 }
 
 type EscalamientoPatch = {
+  escalados: { fecha_escalado: string; fecha_reinicio: string | null }[]
   fecha_escalado: string | null
   fecha_reinicio: string | null
   fecha_finalizacion: string | null
+  fecha_finalizacion_inicial: string | null
   etc: number
   status: string | null
 }
 
-function EscalamientoDateCell({
+function isValidDate(v: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v))
+}
+
+function EscaladosCell({
   item,
   modulo,
-  field,
   onSaved,
 }: {
   item: BacklogItem
   modulo: string
-  field: 'fecha_escalado' | 'fecha_reinicio'
   onSaved: (updated: EscalamientoPatch) => void
 }) {
+  type Row = { fe: string; fr: string }
+
+  const toRows = (esc: { fecha_escalado: string; fecha_reinicio: string | null }[]): Row[] =>
+    esc.map(e => ({ fe: e.fecha_escalado ?? '', fr: e.fecha_reinicio ?? '' }))
+
+  const itemEscalados = (item.escalados ?? []).length > 0
+    ? item.escalados
+    : item.fecha_escalado
+      ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+      : []
+
+  const [rows, setRows] = useState<Row[]>(() => toRows(itemEscalados))
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(false)
-  const [value, setValue] = useState(item[field] ?? '')
-  const valueRef = useRef(item[field] ?? '')
   const savingRef = useRef(false)
 
   useEffect(() => {
     if (savingRef.current) return
-    const v = item[field] ?? ''
-    setValue(v)
-    valueRef.current = v
-  }, [field, item])
+    const esc = (item.escalados ?? []).length > 0
+      ? item.escalados
+      : item.fecha_escalado
+        ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+        : []
+    setRows(toRows(esc))
+  }, [item.escalados, item.fecha_escalado, item.fecha_reinicio])
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setError(false)
-    setValue(e.target.value)
-    valueRef.current = e.target.value
-  }
-
-  function commit() {
-    const trimmed = valueRef.current.trim()
-    const current = item[field] ?? ''
-    if (trimmed === current) return
-
-    if (trimmed && (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed) || isNaN(Date.parse(trimmed)))) {
-      setValue(current)
-      valueRef.current = current
-      setError(true)
-      return
-    }
-
-    const fechaEscalado = field === 'fecha_escalado' ? (trimmed || null) : item.fecha_escalado
-    const fechaReinicio = field === 'fecha_reinicio' ? (trimmed || null) : item.fecha_reinicio
+  function save(currentRows: Row[]) {
+    const escalados = currentRows
+      .filter(r => r.fe.trim() && isValidDate(r.fe.trim()))
+      .map(r => ({ fecha_escalado: r.fe.trim(), fecha_reinicio: r.fr.trim() && isValidDate(r.fr.trim()) ? r.fr.trim() : null }))
 
     savingRef.current = true
     setSaving(true)
-    updateEscalamiento(modulo, item.id, {
-      fecha_escalado: fechaEscalado,
-      fecha_reinicio: fechaEscalado ? fechaReinicio : null,
-    })
+    updateEscalamiento(modulo, item.id, { escalados })
       .then(res => {
         onSaved({
+          escalados: res.escalados,
           fecha_escalado: res.fecha_escalado,
           fecha_reinicio: res.fecha_reinicio,
           fecha_finalizacion: res.fecha_finalizacion,
+          fecha_finalizacion_inicial: res.fecha_finalizacion_inicial,
           etc: res.etc,
           status: res.status,
         })
       })
       .catch(() => {
-        setValue(current)
-        valueRef.current = current
-        setError(true)
+        const esc = (item.escalados ?? []).length > 0
+          ? item.escalados
+          : item.fecha_escalado
+            ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+            : []
+        setRows(toRows(esc))
       })
       .finally(() => {
         savingRef.current = false
@@ -924,23 +961,68 @@ function EscalamientoDateCell({
       })
   }
 
+  function handleChange(idx: number, field: 'fe' | 'fr', value: string) {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: value } : r))
+  }
+
+  function commitRow() {
+    save(rows)
+  }
+
+  function addRow() {
+    setRows(prev => [...prev, { fe: '', fr: '' }])
+  }
+
+  function removeRow(idx: number) {
+    const updated = rows.filter((_, i) => i !== idx)
+    setRows(updated)
+    save(updated)
+  }
+
+  const lastRow = rows[rows.length - 1]
+  const canAdd = !saving && (rows.length === 0 || !!(lastRow?.fr.trim() && isValidDate(lastRow.fr.trim())))
+
   return (
-    <div className="flex items-center gap-1 px-1">
-      <CalendarDays size={12} className={clsx('shrink-0', value ? 'text-orange-600' : 'text-corporate-muted')} />
-      <input
-        type="text"
-        value={value}
-        placeholder="AAAA-MM-DD"
-        onChange={handleChange}
-        onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
-        disabled={saving || (field === 'fecha_reinicio' && !item.fecha_escalado)}
-        className={clsx(
-          'w-24 rounded border bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:bg-white focus:outline-none disabled:opacity-50',
-          error ? 'border-red-300 focus:border-red-500' : 'border-transparent focus:border-allianz-blue',
+    <div className="flex flex-col gap-0.5 px-1 py-1 min-w-[230px]">
+      {rows.map((row, idx) => (
+        <div key={idx} className="flex items-center gap-0.5">
+          <CalendarDays size={10} className={clsx('shrink-0', row.fe ? 'text-orange-500' : 'text-corporate-muted')} />
+          <input
+            type="text"
+            value={row.fe}
+            placeholder="Escalado"
+            onChange={e => handleChange(idx, 'fe', e.target.value)}
+            onBlur={commitRow}
+            onKeyDown={e => { if (e.key === 'Enter') commitRow() }}
+            disabled={saving}
+            className="w-[88px] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-orange-400 focus:bg-white focus:outline-none disabled:opacity-50"
+          />
+          <span className="text-corporate-muted text-xs shrink-0">→</span>
+          <input
+            type="text"
+            value={row.fr}
+            placeholder="Reinicio"
+            onChange={e => handleChange(idx, 'fr', e.target.value)}
+            onBlur={commitRow}
+            onKeyDown={e => { if (e.key === 'Enter') commitRow() }}
+            disabled={saving || !row.fe.trim()}
+            className="w-[88px] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-allianz-blue focus:bg-white focus:outline-none disabled:opacity-50"
+          />
+          {!saving && (
+            <button onClick={() => removeRow(idx)} title="Eliminar" className="text-red-400 hover:text-red-600 shrink-0">
+              <X size={11} />
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="flex items-center gap-1">
+        {canAdd && (
+          <button onClick={addRow} className="flex items-center gap-0.5 text-xs text-allianz-blue hover:underline">
+            <Plus size={10} /> Escalado
+          </button>
         )}
-      />
-      {saving && <Loader2 size={12} className="animate-spin text-allianz-blue shrink-0" />}
+        {saving && <Loader2 size={10} className="animate-spin text-allianz-blue" />}
+      </div>
     </div>
   )
 }
@@ -1381,9 +1463,9 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="w-10 px-3 py-3 text-left font-semibold border-r border-white/10 shrink-0">Plan</th>
                 <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
+                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Inicial</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Finalización</th>
-                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Escalado</th>
-                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Reinicio</th>
+                <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
                 <th className="min-w-[70px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
@@ -1419,14 +1501,22 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       <FechaAsignacionCell
                         item={item}
                         modulo={modulo}
-                        onSaved={(fecha, fechaFinalizacion) =>
+                        onSaved={(fecha, fechaFinalizacion, fechaFinalizacionInicial) =>
                           setItems(prev => prev.map(it => {
                             if (it.id !== item.id) return it
-                            const updated = { ...it, fecha_asignacion: fecha }
+                            const updated = { ...it, fecha_asignacion: fecha, fecha_finalizacion_inicial: fechaFinalizacionInicial ?? it.fecha_finalizacion_inicial }
                             return { ...updated, fecha_finalizacion: fechaFinalizacion ?? calcularFechaFin(updated, piActivo) }
                           }))
                         }
                       />
+                    </td>
+                    <td className="px-3 py-2 border-r border-corporate-line/30">
+                      {(() => {
+                        const fin = item.fecha_finalizacion_inicial ?? calcularFechaFinInicial(item, piActivo)
+                        return fin
+                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500"><CalendarDays size={11} className="shrink-0" />{fin}</span>
+                          : <span className="text-corporate-muted text-xs">—</span>
+                      })()}
                     </td>
                     <td className="px-3 py-2 border-r border-corporate-line/30">
                       {(() => {
@@ -1436,21 +1526,10 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                           : <span className="text-corporate-muted text-xs">—</span>
                       })()}
                     </td>
-                    <td className="px-2 py-1.5 border-r border-corporate-line/30">
-                      <EscalamientoDateCell
+                    <td className="px-1 py-1 border-r border-corporate-line/30">
+                      <EscaladosCell
                         item={item}
                         modulo={modulo}
-                        field="fecha_escalado"
-                        onSaved={updated =>
-                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...updated } : it))
-                        }
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 border-r border-corporate-line/30">
-                      <EscalamientoDateCell
-                        item={item}
-                        modulo={modulo}
-                        field="fecha_reinicio"
                         onSaved={updated =>
                           setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...updated } : it))
                         }

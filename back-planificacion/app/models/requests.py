@@ -55,9 +55,13 @@ class FechaAsignacionRequest(BaseModel):
     fecha_asignacion: Optional[str] = None
 
 
-class EscalamientoRequest(BaseModel):
-    fecha_escalado: Optional[str] = None
+class EscalamientoItemRequest(BaseModel):
+    fecha_escalado: str
     fecha_reinicio: Optional[str] = None
+
+
+class EscalamientoRequest(BaseModel):
+    escalados: list[EscalamientoItemRequest] = []
 
 
 class StatusRequest(BaseModel):

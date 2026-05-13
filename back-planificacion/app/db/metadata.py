@@ -329,6 +329,10 @@ SCHEMA_STATEMENTS = [
         );
     END
     """,
+    "IF COL_LENGTH('dbo.backlog_mejora_continua', 'escalados') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD escalados NVARCHAR(MAX) NULL;",
+    "IF COL_LENGTH('dbo.backlog_mejora_continua', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD fecha_finalizacion_inicial DATE NULL;",
+    "IF COL_LENGTH('dbo.backlog_fabrica', 'escalados') IS NULL ALTER TABLE dbo.backlog_fabrica ADD escalados NVARCHAR(MAX) NULL;",
+    "IF COL_LENGTH('dbo.backlog_fabrica', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_fabrica ADD fecha_finalizacion_inicial DATE NULL;",
 ]
 
 

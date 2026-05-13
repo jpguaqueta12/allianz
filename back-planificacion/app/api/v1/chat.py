@@ -210,10 +210,11 @@ async def update_fecha_asignacion(modulo: str, ticket_id: int, body: FechaAsigna
     from app.db.connection import get_pool
     import app.db.queries as Q
     pool = get_pool()
-    fecha_fin = await Q.update_fecha_asignacion(pool, modulo.upper(), ticket_id, body.fecha_asignacion)
+    fecha_fin, fecha_fin_inicial = await Q.update_fecha_asignacion(pool, modulo.upper(), ticket_id, body.fecha_asignacion)
     return {
         "ok": True,
         "fecha_finalizacion": fecha_fin.isoformat() if fecha_fin else None,
+        "fecha_finalizacion_inicial": fecha_fin_inicial.isoformat() if fecha_fin_inicial else None,
     }
 
 
@@ -227,16 +228,17 @@ async def update_escalamiento(modulo: str, ticket_id: int, body: EscalamientoReq
             pool,
             modulo.upper(),
             ticket_id,
-            body.fecha_escalado,
-            body.fecha_reinicio,
+            [e.model_dump() for e in body.escalados],
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {
         "ok": True,
-        "fecha_escalado": updated["fecha_escalado"].isoformat() if updated["fecha_escalado"] else None,
-        "fecha_reinicio": updated["fecha_reinicio"].isoformat() if updated["fecha_reinicio"] else None,
-        "fecha_finalizacion": updated["fecha_finalizacion"].isoformat() if updated["fecha_finalizacion"] else None,
+        "escalados": updated["escalados"],
+        "fecha_escalado": updated["fecha_escalado"].isoformat() if updated.get("fecha_escalado") else None,
+        "fecha_reinicio": updated["fecha_reinicio"].isoformat() if updated.get("fecha_reinicio") else None,
+        "fecha_finalizacion": updated["fecha_finalizacion"].isoformat() if updated.get("fecha_finalizacion") else None,
+        "fecha_finalizacion_inicial": updated["fecha_finalizacion_inicial"].isoformat() if updated.get("fecha_finalizacion_inicial") else None,
         "etc": updated["etc"],
         "status": updated["status"],
     }
