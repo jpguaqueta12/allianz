@@ -64,6 +64,24 @@ class StatusRequest(BaseModel):
     status: str
 
 
+class CreateBacklogRequest(BaseModel):
+    ticket_key: Optional[str] = None
+    summary: str
+    issue_type: Optional[str] = None
+    project: Optional[str] = None
+    status: Optional[str] = "Backlog"
+    assigned_team: Optional[str] = None
+    assignee: Optional[str] = None
+    reporter: Optional[str] = None
+    epic_link: Optional[str] = None
+    priority: Optional[str] = None
+    story_points: Optional[float] = None
+    sprint: Optional[str] = None
+    labels: Optional[str] = None
+    components: Optional[str] = None
+    fix_version: Optional[str] = None
+
+
 class PlanificacionItemRequest(BaseModel):
     responsable: Optional[str] = None
     perfil: str

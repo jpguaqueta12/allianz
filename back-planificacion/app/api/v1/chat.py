@@ -17,6 +17,7 @@ from app.models.requests import (
     FechaAsignacionRequest,
     EscalamientoRequest,
     StatusRequest,
+    CreateBacklogRequest,
 )
 from app.models.responses import SessionResponse, ChatStartResponse
 from app.services.cache_service import CacheService
@@ -171,6 +172,28 @@ async def get_responsables(modulo: str, pi_id: Optional[int] = Query(default=Non
     from app.db.connection import get_pool
     import app.db.queries as Q
     return await Q.get_responsables_disponibles(get_pool(), modulo.upper(), pi_id)
+
+
+@router.post("/backlog/{modulo}")
+async def create_backlog(modulo: str, body: CreateBacklogRequest, pi_id: Optional[int] = Query(default=None)):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    pool = get_pool()
+    mod = modulo.upper()
+    if mod not in ("MEJORA_CONTINUA", "FABRICA"):
+        raise HTTPException(status_code=400, detail="Módulo no soportado para backlog manual")
+    selected_pi_id = pi_id
+    if selected_pi_id is None:
+        pi_modulo = 'MEJORA_CONTINUA' if mod == 'FABRICA' else mod
+        selected_pi_id = await pool.fetchval(
+            "SELECT id FROM pi WHERE activo=TRUE AND modulo=$1 LIMIT 1", pi_modulo
+        )
+    if not selected_pi_id:
+        raise HTTPException(status_code=404, detail=_NO_PI_MSG)
+    try:
+        return await Q.create_backlog_item(pool, mod, selected_pi_id, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.put("/backlog/{modulo}/{ticket_id}/planificacion")

@@ -127,6 +127,7 @@ export interface AlertaItem {
   summary: string
   assignee: string | null
   equipo: string | null
+  equipo_trabajo: string | null
   fecha_asignacion: string
   fecha_fin_desarrollo: string
   fecha_fin_qa: string | null

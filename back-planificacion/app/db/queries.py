@@ -170,6 +170,20 @@ def _sumar_horas_legacy(row: Any | dict, asignadas: dict[str, float]) -> None:
             asignadas[nombre] = asignadas.get(nombre, 0) + horas_por_persona
 
 
+def _responsables_trabajo(row: Any | dict, items: list[dict] | None = None) -> list[str]:
+    data = dict(row)
+    names: list[str] = []
+    if items:
+        for item in items:
+            responsable = (item.get("responsable") or "").strip()
+            if responsable:
+                names.append(responsable)
+    else:
+        for tech in TECH_HORA_COLS:
+            names.extend(_split_responsables(data.get(f"responsable_{tech}")))
+    return list(dict.fromkeys(name for name in names if name))
+
+
 async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[str, float]:
     """
     Suma la carga asignada en Mejora Continua y Fabrica en una sola query UNION ALL.
@@ -559,6 +573,57 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
                 item["fecha_finalizacion"] = None  # escalated — hide date until reinicio is set
         result.append(item)
     return result
+
+
+async def create_backlog_item(pool: Any, modulo: str, pi_id: int, data: dict) -> dict:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    summary = (data.get("summary") or "").strip()
+    if not summary:
+        raise ValueError("El summary es obligatorio")
+
+    ticket_key = (data.get("ticket_key") or "").strip() or None
+    if ticket_key:
+        exists = await pool.fetchval(
+            f"SELECT COUNT(*) FROM {table} WHERE UPPER(REPLACE(ticket_key, ' ', ''))=$1 AND pi_id=$2",
+            ticket_key.upper().replace(" ", ""),
+            pi_id,
+        )
+        if exists:
+            raise ValueError("Ya existe un ticket con ese Key en este PI")
+
+    row = await pool.fetchrow(f"""
+        INSERT INTO {table}
+            (created, issue_type, ticket_key, project, status, summary,
+             assigned_team, assignee, reporter, epic_link, priority,
+             story_points, sprint, labels, components, fix_version, pi_id, extra)
+        VALUES
+            (GETDATE(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             $11, $12, $13, $14, $15, $16, $17);
+        SELECT CAST(SCOPE_IDENTITY() AS int) AS id
+    """,
+        data.get("issue_type"),
+        ticket_key,
+        data.get("project"),
+        data.get("status") or "Backlog",
+        summary,
+        data.get("assigned_team"),
+        data.get("assignee"),
+        data.get("reporter"),
+        data.get("epic_link"),
+        data.get("priority"),
+        data.get("story_points"),
+        data.get("sprint"),
+        data.get("labels"),
+        data.get("components"),
+        data.get("fix_version"),
+        pi_id,
+        json.dumps({"manual": True}, ensure_ascii=False),
+    )
+    created_id = row["id"] if row else None
+    for item in await get_backlog(pool, modulo, pi_id):
+        if item["id"] == created_id:
+            return item
+    raise ValueError("No se pudo cargar el ticket creado")
 
 
 def _horas_por_perfil_de_data(data: dict) -> tuple[float, float, float]:
@@ -1508,6 +1573,8 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             horas_analisis_cobol::float,   horas_desarrollo_cobol::float,
             horas_pruebas_cobol::float,    horas_af_cobol::float,
             horas_analisis_qa::float,      horas_af_qa::float,
+            responsable_java, responsable_cobol, responsable_dialogue,
+            responsable_parametria, responsable_qa,
             extra
         FROM {table}
         WHERE fecha_asignacion IS NOT NULL
@@ -1559,6 +1626,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             "summary": row["summary"],
             "assignee": row["assignee"],
             "equipo": row["assigned_team"],
+            "equipo_trabajo": ", ".join(_responsables_trabajo(row, items)) or None,
             "fecha_asignacion": fecha_asig.isoformat(),
             "fecha_fin_desarrollo": fecha_fin_dev.isoformat(),
             "fecha_fin_qa": fecha_fin_qa_iso,

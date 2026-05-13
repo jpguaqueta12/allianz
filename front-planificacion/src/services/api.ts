@@ -1,4 +1,4 @@
-import { AlertaItem, DashboardData, EstimacionResult, Festivo, PiInfo } from '../types'
+import { AlertaItem, BacklogItem, DashboardData, EstimacionResult, Festivo, PiInfo } from '../types'
 
 const API_ORIGIN = import.meta.env.VITE_API_BASE_URL ?? ''
 const BASE = `${API_ORIGIN}/api/v1`
@@ -222,6 +222,37 @@ export async function getSlaReport(modulo: string, piId?: number | null): Promis
 export async function getBacklog(modulo: string, piId?: number | null) {
   const r = await fetch(withPi(`${BASE}/backlog/${modulo}`, piId))
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error cargando backlog' })); throw new Error(e.detail) }
+  return r.json()
+}
+
+export interface CreateBacklogData {
+  ticket_key: string | null
+  summary: string
+  issue_type: string | null
+  project: string | null
+  status: string | null
+  assigned_team: string | null
+  assignee: string | null
+  reporter: string | null
+  epic_link: string | null
+  priority: string | null
+  story_points: number | null
+  sprint: string | null
+  labels: string | null
+  components: string | null
+  fix_version: string | null
+}
+
+export async function createBacklogItem(modulo: string, piId: number | null | undefined, data: CreateBacklogData): Promise<BacklogItem> {
+  const r = await fetch(withPi(`${BASE}/backlog/${modulo}`, piId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error creando ticket' }))
+    throw new Error(err.detail ?? 'Error creando ticket')
+  }
   return r.json()
 }
 

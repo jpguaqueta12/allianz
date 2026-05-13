@@ -6,8 +6,8 @@ import {
 import clsx from 'clsx'
 import { BacklogItem, PiInfo } from '../../types'
 import {
-  getBacklog, updatePlanificacion, updateFechaAsignacion, updateEscalamiento, updateBacklogStatus, getResponsables,
-  PlanificacionData, PlanificacionItem, ResponsableDisponible,
+  getBacklog, createBacklogItem, updatePlanificacion, updateFechaAsignacion, updateEscalamiento, updateBacklogStatus, getResponsables,
+  CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
 // ── Cálculo fecha finalización ────────────────────────────────────────────────
@@ -925,6 +925,170 @@ function EscalamientoDateCell({
   )
 }
 
+const BACKLOG_FORM_EMPTY: CreateBacklogData = {
+  ticket_key: null,
+  summary: '',
+  issue_type: null,
+  project: null,
+  status: 'Backlog',
+  assigned_team: null,
+  assignee: null,
+  reporter: null,
+  epic_link: null,
+  priority: null,
+  story_points: null,
+  sprint: null,
+  labels: null,
+  components: null,
+  fix_version: null,
+}
+
+function textOrNull(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function ManualBacklogModal({
+  modulo,
+  piId,
+  onClose,
+  onCreated,
+}: {
+  modulo: string
+  piId?: number | null
+  onClose: () => void
+  onCreated: (item: BacklogItem) => void
+}) {
+  const [form, setForm] = useState<CreateBacklogData>(BACKLOG_FORM_EMPTY)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function setField<K extends keyof CreateBacklogData>(field: K, value: CreateBacklogData[K]) {
+    setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function handleSubmit() {
+    if (!form.summary.trim()) {
+      setError('El summary es obligatorio')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const created = await createBacklogItem(modulo, piId, {
+        ...form,
+        ticket_key: textOrNull(form.ticket_key ?? ''),
+        summary: form.summary.trim(),
+        issue_type: textOrNull(form.issue_type ?? ''),
+        project: textOrNull(form.project ?? ''),
+        status: textOrNull(form.status ?? '') ?? 'Backlog',
+        assigned_team: textOrNull(form.assigned_team ?? ''),
+        assignee: textOrNull(form.assignee ?? ''),
+        reporter: textOrNull(form.reporter ?? ''),
+        epic_link: textOrNull(form.epic_link ?? ''),
+        priority: textOrNull(form.priority ?? ''),
+        sprint: textOrNull(form.sprint ?? ''),
+        labels: textOrNull(form.labels ?? ''),
+        components: textOrNull(form.components ?? ''),
+        fix_version: textOrNull(form.fix_version ?? ''),
+      })
+      onCreated(created)
+      onClose()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error creando ticket')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-3xl rounded-xl border border-corporate-line bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-corporate-line px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-corporate-ink">Nuevo elemento de backlog</p>
+            <p className="mt-0.5 text-xs text-corporate-muted">{modulo === 'FABRICA' ? 'Fábrica' : 'Mejora Continua'}</p>
+          </div>
+          <button onClick={onClose} disabled={saving} className="rounded p-1.5 text-corporate-muted hover:bg-corporate-surface hover:text-corporate-ink">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="grid max-h-[70vh] gap-3 overflow-y-auto p-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="text-[11px] font-medium uppercase text-corporate-muted">Summary</label>
+            <textarea
+              autoFocus
+              value={form.summary}
+              onChange={e => setField('summary', e.target.value)}
+              className="mt-1 min-h-[84px] w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+            />
+          </div>
+          {[
+            ['ticket_key', 'Key'],
+            ['issue_type', 'Tipo'],
+            ['project', 'Proyecto'],
+            ['status', 'Status'],
+            ['assigned_team', 'Equipo asignado'],
+            ['assignee', 'Assignee'],
+            ['reporter', 'Reporter'],
+            ['epic_link', 'Epic Link'],
+            ['priority', 'Prioridad'],
+            ['sprint', 'Sprint'],
+            ['labels', 'Labels'],
+            ['components', 'Components'],
+            ['fix_version', 'Fix Version'],
+          ].map(([field, label]) => (
+            <div key={field}>
+              <label className="text-[11px] font-medium uppercase text-corporate-muted">{label}</label>
+              <input
+                type="text"
+                value={(form[field as keyof CreateBacklogData] as string | null) ?? ''}
+                onChange={e => setField(field as keyof CreateBacklogData, e.target.value as never)}
+                className="mt-1 w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+              />
+            </div>
+          ))}
+          <div>
+            <label className="text-[11px] font-medium uppercase text-corporate-muted">Story Points</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={form.story_points ?? ''}
+              onChange={e => setField('story_points', e.target.value === '' ? null : Number(e.target.value))}
+              className="mt-1 w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+            />
+          </div>
+          {error && (
+            <div className="md:col-span-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-corporate-line px-5 py-4">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg border border-corporate-line px-4 py-2 text-sm font-medium text-corporate-muted hover:text-corporate-ink disabled:opacity-40"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg bg-allianz-blue px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+            Crear
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Panel principal ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -943,6 +1107,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [search, setSearch]   = useState('')
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
+  const [creating, setCreating] = useState(false)
   const [page, setPage]       = useState(1)
   const [pageSize, setPageSize] = useState(25)
 
@@ -1024,10 +1189,26 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
     </div>
   )
   if (loaded && items.length === 0) return (
-    <div className="flex flex-col items-center gap-3 py-16 text-center">
-      <p className="text-sm font-medium text-corporate-ink">Sin tickets en el backlog</p>
-      <p className="text-xs text-corporate-muted">Sube un archivo Excel desde <strong>Subir Info MD/FA</strong>.</p>
-    </div>
+    <>
+      {creating && (
+        <ManualBacklogModal
+          modulo={modulo}
+          piId={piId}
+          onClose={() => setCreating(false)}
+          onCreated={created => setItems([created])}
+        />
+      )}
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <p className="text-sm font-medium text-corporate-ink">Sin tickets en el backlog</p>
+        <p className="text-xs text-corporate-muted">Sube un archivo Excel desde <strong>Subir Info MD/FA</strong> o crea un elemento manual.</p>
+        <button
+          onClick={() => setCreating(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-allianz-blue px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+        >
+          <Plus size={14} /> Nuevo elemento
+        </button>
+      </div>
+    </>
   )
 
   return (
@@ -1049,6 +1230,17 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           statusOptions={statusOptions}
         />
       )}
+      {creating && (
+        <ManualBacklogModal
+          modulo={modulo}
+          piId={piId}
+          onClose={() => setCreating(false)}
+          onCreated={created => {
+            setItems(prev => [created, ...prev])
+            setPage(1)
+          }}
+        />
+      )}
 
       <div className="space-y-3">
         {/* barra búsqueda */}
@@ -1059,6 +1251,10 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           <span className="text-xs text-corporate-muted whitespace-nowrap">
             {filtered.length}/{items.length} tickets
           </span>
+          <button onClick={() => setCreating(true)}
+            className="flex items-center gap-1 rounded-lg bg-allianz-blue px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
+            <Plus size={12} /> Nuevo
+          </button>
           <button onClick={load} disabled={loading}
             className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors">
             <RefreshCw size={12} /> Actualizar
