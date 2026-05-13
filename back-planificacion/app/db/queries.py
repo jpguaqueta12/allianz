@@ -107,7 +107,7 @@ TECH_HORA_COLS = {
     "qa":         ["horas_analisis_qa","horas_af_qa"],
 }
 
-QA_TEAM_NAMES = (
+QUALITY_TEAM_NAMES = (
     "Carlos Villadiego",
     "Rafael Alvarado",
     "Laura Fernanda Pardo",
@@ -266,8 +266,8 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
     return result
 
 
-async def ensure_qa_team_capacity(pool: Any, pi_id: int) -> dict:
-    """Crea el equipo QA/Gestión y lo agrega a la capacidad del PI."""
+async def ensure_quality_team_capacity(pool: Any, pi_id: int) -> dict:
+    """Crea el equipo de Calidad y lo agrega a la capacidad del PI."""
     async with pool.acquire() as conn:
         async with conn.transaction():
             horas_pi = await conn.fetchval(
@@ -278,15 +278,15 @@ async def ensure_qa_team_capacity(pool: Any, pi_id: int) -> dict:
 
             created = 0
             attached = 0
-            for nombre in QA_TEAM_NAMES:
+            for nombre in QUALITY_TEAM_NAMES:
                 persona = await conn.fetchrow(
-                    "SELECT id FROM personas WHERE nombre=$1 AND tecnologia='QA'",
+                    "SELECT id FROM personas WHERE nombre=$1 AND tecnologia='CALIDAD'",
                     nombre,
                 )
                 if not persona:
                     persona = await conn.fetchrow("""
                         INSERT INTO personas (nombre, tecnologia, rol, activo)
-                        VALUES ($1, 'QA', 'Desarrollador', 1);
+                        VALUES ($1, 'CALIDAD', 'Desarrollador', 1);
                         SELECT id FROM personas WHERE id = CAST(SCOPE_IDENTITY() AS int)
                     """, nombre)
                     created += 1

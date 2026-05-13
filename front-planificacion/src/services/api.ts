@@ -266,7 +266,7 @@ export interface PlanificacionData {
 export interface ResponsableDisponible {
   id: number
   nombre: string
-  tecnologia: 'JAVA' | 'COBOL' | 'QA'
+  tecnologia: 'JAVA' | 'COBOL' | 'CALIDAD' | 'GESTION' | 'QA'
   rol: string
   capacidad_horas: number
   horas_asignadas: number

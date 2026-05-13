@@ -98,7 +98,7 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
   const [items, setItems]     = useState<AlertaItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
-  const [filtro, setFiltro]   = useState<Filtro>('alertas')
+  const [filtro, setFiltro]   = useState<Filtro>('todos')
   const [loaded, setLoaded]   = useState(false)
 
   async function load() {
@@ -139,6 +139,8 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
   const devItems = items.filter(i => i.alerta_desarrollo != null)
   const qaItems  = items.filter(i => i.alerta_qa != null)
   const visible  = items.filter(i => matchFiltro(i, filtro))
+  const equipoAsignado = (item: AlertaItem) =>
+    item.equipo ?? (item as AlertaItem & { assigned_team?: string | null }).assigned_team ?? null
 
   const rowClass = (item: AlertaItem) => {
     const worstDev = item.alerta_desarrollo
@@ -207,7 +209,7 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                 <tr className="bg-slate-800 text-white">
                   <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                   <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
-                  <th className="min-w-[130px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo</th>
+                  <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo asignado</th>
                   <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Inicio</th>
                   <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fin Desarrollo</th>
                   <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta Dev</th>
@@ -238,8 +240,8 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                         </span>
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30">
-                        <span className="line-clamp-2 text-corporate-muted leading-snug" title={item.equipo ?? ''}>
-                          {item.equipo ?? '—'}
+                        <span className="line-clamp-2 font-medium text-corporate-ink leading-snug" title={equipoAsignado(item) ?? ''}>
+                          {equipoAsignado(item) ?? '—'}
                         </span>
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">

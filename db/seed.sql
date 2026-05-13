@@ -82,12 +82,12 @@ INSERT INTO personas (nombre, tecnologia, rol) VALUES
     ('Santiago Nicolas Briñez Garcia',    'JAVA', 'Desarrollador'),   -- 32
     ('Jhonny Agudelo Rios',               'JAVA', 'Desarrollador');   -- 33 (alias Jhonny)
 
--- Gestión y calidad
+-- Calidad
 INSERT INTO personas (nombre, tecnologia, rol) VALUES
-    ('Carlos Villadiego',                 'QA', 'Desarrollador'),
-    ('Rafael Alvarado',                   'QA', 'Desarrollador'),
-    ('Laura Fernanda Pardo',              'QA', 'Desarrollador'),
-    ('Maryerin Hernandez',                'QA', 'Desarrollador');
+    ('Carlos Villadiego',                 'CALIDAD', 'Desarrollador'),
+    ('Rafael Alvarado',                   'CALIDAD', 'Desarrollador'),
+    ('Laura Fernanda Pardo',              'CALIDAD', 'Desarrollador'),
+    ('Maryerin Hernandez',                'CALIDAD', 'Desarrollador');
 
 -- ---------------------------------------------------------------
 -- CAPACIDAD POR PERSONA - PI3
@@ -139,11 +139,11 @@ FROM (VALUES
 ) AS proj(nombre, identi, cap)
 JOIN personas p ON p.nombre = proj.nombre AND p.tecnologia = 'JAVA';
 
--- Gestión y calidad
+-- Calidad
 INSERT INTO capacidad_persona_pi (pi_id, persona_id, proyecto_principal, capacidad_horas)
 SELECT 1, p.id, NULL, 216
 FROM personas p
-WHERE p.tecnologia = 'QA';
+WHERE p.tecnologia = 'CALIDAD';
 
 -- ---------------------------------------------------------------
 -- CAPACIDAD PROYECTO PI3

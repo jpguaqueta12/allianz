@@ -1,7 +1,7 @@
 export interface PersonaCapacidad {
   id: number
   nombre: string
-  tecnologia: 'COBOL' | 'JAVA' | 'QA'
+  tecnologia: 'COBOL' | 'JAVA' | 'CALIDAD' | 'GESTION' | 'QA'
   rol: string
   proyecto_principal: string | null
   capacidad: number | null
@@ -45,7 +45,7 @@ export interface PiInfo {
 export interface PersonaDisponible {
   id: number
   nombre: string
-  tecnologia: 'COBOL' | 'JAVA' | 'QA'
+  tecnologia: 'COBOL' | 'JAVA' | 'CALIDAD' | 'GESTION' | 'QA'
   rol: string
 }
 

@@ -72,7 +72,7 @@ const estadoColor: Record<string, string> = {
 }
 
 type VistaCapacidad = 'riesgo' | 'tecnologia'
-type TecnologiaCapacidad = 'JAVA' | 'COBOL' | 'QA'
+type TecnologiaCapacidad = 'JAVA' | 'COBOL' | 'CALIDAD' | 'GESTION' | 'QA'
 type FiltroCapacidad = 'TODOS' | 'SOBRECARGADO' | 'DISPONIBLE' | 'OCUPADO' | 'SIN_CAPACIDAD' | TecnologiaCapacidad
 
 const FILTERS: { id: FiltroCapacidad; label: string }[] = [
@@ -83,8 +83,22 @@ const FILTERS: { id: FiltroCapacidad; label: string }[] = [
   { id: 'SIN_CAPACIDAD', label: 'Sin capacidad' },
   { id: 'JAVA', label: 'JAVA' },
   { id: 'COBOL', label: 'COBOL' },
-  { id: 'QA', label: 'Gestión y calidad' },
+  { id: 'CALIDAD', label: 'Calidad' },
+  { id: 'GESTION', label: 'Gestión' },
 ]
+
+function tecnologiaLabel(tecnologia: string) {
+  if (tecnologia === 'CALIDAD' || tecnologia === 'QA') return 'Calidad'
+  if (tecnologia === 'GESTION') return 'Gestión'
+  return tecnologia
+}
+
+function tecnologiaTone(tecnologia: string) {
+  if (tecnologia === 'JAVA') return 'blue'
+  if (tecnologia === 'COBOL') return 'green'
+  if (tecnologia === 'CALIDAD' || tecnologia === 'QA') return 'purple'
+  return 'amber'
+}
 
 const riskRank: Record<string, number> = {
   'SOBRECARGADO': 0,
@@ -182,7 +196,8 @@ function AddPersonaForm({
           >
             <option value="JAVA">JAVA</option>
             <option value="COBOL">COBOL</option>
-            <option value="QA">Gestión y calidad</option>
+            <option value="CALIDAD">Calidad</option>
+            <option value="GESTION">Gestión</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -375,7 +390,7 @@ function CapacityTable({
               return (
                 <tr key={p.id} className="hover:bg-corporate-surface">
                   <td className="whitespace-nowrap font-medium text-corporate-ink">{p.nombre}</td>
-                  <td><StatusBadge tone={p.tecnologia === 'JAVA' ? 'blue' : p.tecnologia === 'COBOL' ? 'green' : 'purple'}>{p.tecnologia}</StatusBadge></td>
+                  <td><StatusBadge tone={tecnologiaTone(p.tecnologia) as never}>{tecnologiaLabel(p.tecnologia)}</StatusBadge></td>
                   <td className="text-right font-mono">
                     <span>{formatHours(p.capacidad)}</span>
                     {capDiffersFromPi && (
@@ -445,16 +460,19 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
   const [search, setSearch] = useState('')
 
   const filtered = sortByRisk(personas).filter(p => {
+    if (filtro === 'CALIDAD' && p.tecnologia !== 'CALIDAD' && p.tecnologia !== 'QA') return false
+    if (filtro === 'GESTION' && p.tecnologia !== 'GESTION') return false
     if ((filtro === 'JAVA' || filtro === 'COBOL' || filtro === 'QA') && p.tecnologia !== filtro) return false
     if (filtro === 'SIN_CAPACIDAD' && p.estado !== 'SIN CAPACIDAD') return false
-    if (filtro !== 'TODOS' && filtro !== 'JAVA' && filtro !== 'COBOL' && filtro !== 'QA' && filtro !== 'SIN_CAPACIDAD' && p.estado !== filtro) return false
+    if (filtro !== 'TODOS' && filtro !== 'JAVA' && filtro !== 'COBOL' && filtro !== 'QA' && filtro !== 'CALIDAD' && filtro !== 'GESTION' && filtro !== 'SIN_CAPACIDAD' && p.estado !== filtro) return false
     const q = search.trim().toLowerCase()
     if (!q) return true
     return `${p.nombre} ${p.tecnologia} ${p.estado}`.toLowerCase().includes(q)
   })
   const cobol = filtered.filter(p => p.tecnologia === 'COBOL')
   const java  = filtered.filter(p => p.tecnologia === 'JAVA')
-  const qa    = filtered.filter(p => p.tecnologia === 'QA')
+  const calidad = filtered.filter(p => p.tecnologia === 'CALIDAD' || p.tecnologia === 'QA')
+  const gestion = filtered.filter(p => p.tecnologia === 'GESTION')
 
   async function handleConfirmRemove() {
     if (!confirm || !piId || !onRefresh) return
@@ -604,7 +622,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
           onAdd={() => setShowForm(true)}
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-3">
+        <div className="grid gap-4 xl:grid-cols-2">
           <CapacityTable
             title="Equipo COBOL"
             description={`${cobol.length} persona${cobol.length !== 1 ? 's' : ''}`}
@@ -626,9 +644,19 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
             onAdd={() => setShowForm(true)}
           />
           <CapacityTable
-            title="Gestión y calidad"
-            description={`${qa.length} persona${qa.length !== 1 ? 's' : ''}`}
-            rows={qa}
+            title="Calidad"
+            description={`${calidad.length} persona${calidad.length !== 1 ? 's' : ''}`}
+            rows={calidad}
+            piId={piId}
+            onRefresh={onRefresh}
+            horasPorPersona={horasPorPersona}
+            onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
+            onAdd={() => setShowForm(true)}
+          />
+          <CapacityTable
+            title="Gestión"
+            description={`${gestion.length} persona${gestion.length !== 1 ? 's' : ''}`}
+            rows={gestion}
             piId={piId}
             onRefresh={onRefresh}
             horasPorPersona={horasPorPersona}

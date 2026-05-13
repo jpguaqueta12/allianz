@@ -7,7 +7,7 @@
 -- TIPOS ENUMERADOS
 -- ---------------------------------------------------------------
 
-CREATE TYPE tecnologia_dev AS ENUM ('COBOL', 'JAVA', 'QA');
+CREATE TYPE tecnologia_dev AS ENUM ('COBOL', 'JAVA', 'CALIDAD', 'GESTION');
 
 CREATE TYPE rol_persona AS ENUM ('Desarrollador', 'Lider Tec.');
 

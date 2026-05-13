@@ -174,12 +174,12 @@ function PaginationControls({
 type Tech = 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
 type Fase = 'desarrollo'
 
-const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'QA' | null }[] = [
+const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'CALIDAD' | null }[] = [
   { id: 'java',       label: 'JAVA',       color: 'text-blue-700',   headerBg: 'bg-blue-600',   techMatch: 'JAVA'  },
   { id: 'cobol',      label: 'COBOL',      color: 'text-emerald-700',headerBg: 'bg-emerald-600',techMatch: 'COBOL' },
   { id: 'dialogue',   label: 'DIALOGUE',   color: 'text-purple-700', headerBg: 'bg-purple-600', techMatch: null    },
   { id: 'parametria', label: 'PARAMETRÍA', color: 'text-orange-700', headerBg: 'bg-orange-500', techMatch: null    },
-  { id: 'qa',         label: 'PRUEBAS QA', color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: 'QA'    },
+  { id: 'qa',         label: 'PRUEBAS QA', color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: 'CALIDAD' },
 ]
 
 const FASES: { id: Fase; label: string; techs: Tech[] }[] = [
@@ -309,6 +309,7 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
 function responsablesForPerfil(personas: ResponsableDisponible[], perfil: Tech) {
   const tech = TECHS.find(t => t.id === perfil)
   return personas.filter(p => {
+    if (tech?.techMatch === 'CALIDAD') return p.tecnologia === 'CALIDAD' || p.tecnologia === 'QA'
     if (tech?.techMatch) return p.tecnologia === tech.techMatch
     return true
   })

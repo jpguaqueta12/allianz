@@ -399,11 +399,11 @@ PERSONA_SEED = [
     ("Jhon Carlos Colorado Angulo",        "JAVA",  "Desarrollador"),
     ("Andres Sebastian Cubillos",          "JAVA",  "Desarrollador"),
     ("Santiago Nicolas Briñez Garcia",     "JAVA",  "Desarrollador"),
-    # Gestión y calidad
-    ("Carlos Villadiego",                  "QA",    "Desarrollador"),
-    ("Rafael Alvarado",                    "QA",    "Desarrollador"),
-    ("Laura Fernanda Pardo",               "QA",    "Desarrollador"),
-    ("Maryerin Hernandez",                 "QA",    "Desarrollador"),
+    # Calidad
+    ("Carlos Villadiego",                  "CALIDAD", "Desarrollador"),
+    ("Rafael Alvarado",                    "CALIDAD", "Desarrollador"),
+    ("Laura Fernanda Pardo",               "CALIDAD", "Desarrollador"),
+    ("Maryerin Hernandez",                 "CALIDAD", "Desarrollador"),
 ]
 
 
@@ -437,6 +437,18 @@ async def ensure_operational_schema(pool: Any) -> None:
             VALUES ($1, $2, $3, $4, 1)
         """, identi, nombre, squad, modulo)
 
+    await pool.execute("""
+        UPDATE dbo.personas
+        SET tecnologia = 'CALIDAD'
+        WHERE tecnologia = 'QA'
+          AND nombre IN (
+              'Carlos Villadiego',
+              'Rafael Alvarado',
+              'Laura Fernanda Pardo',
+              'Maryerin Hernandez'
+          )
+    """)
+
     for nombre, tecnologia, rol in PERSONA_SEED:
         await pool.execute("""
             IF NOT EXISTS (SELECT 1 FROM dbo.personas WHERE nombre = $1 AND tecnologia = $2)
@@ -461,7 +473,7 @@ async def ensure_operational_schema(pool: Any) -> None:
         SELECT pi.id, p.id, pi.horas_por_persona
         FROM dbo.pi pi
         CROSS JOIN dbo.personas p
-        WHERE p.tecnologia = 'QA'
+        WHERE p.tecnologia = 'CALIDAD'
           AND pi.estado <> 'CERRADO'
           AND NOT EXISTS (
               SELECT 1
