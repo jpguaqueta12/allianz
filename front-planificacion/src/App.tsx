@@ -1,19 +1,19 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
-import { MessageSquare, LayoutDashboard, Loader2, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogOut, KeyRound } from 'lucide-react'
-import { DashboardPage } from './pages/DashboardPage'
-import { ChatPage } from './pages/ChatPage'
-import { ConfigPage } from './pages/ConfigPage'
-import { EstimationPage } from './pages/EstimationPage'
-import { FabricaPage } from './pages/FabricaPage'
-import { IncidentesPage } from './pages/IncidentesPage'
-import { UploadPage } from './pages/UploadPage'
-import { UploadIncidentesPage } from './pages/UploadIncidentesPage'
+import { MessageSquare, LayoutDashboard, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogOut, KeyRound } from 'lucide-react'
 import { LoginPage } from './pages/LoginPage'
-import { useChatStore } from './stores/chatStore'
 import { useAuthStore } from './stores/authStore'
-import { createSession, verifyToken } from './services/api'
+import { verifyToken } from './services/api'
 import clsx from 'clsx'
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
+const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })))
+const ConfigPage = lazy(() => import('./pages/ConfigPage').then((m) => ({ default: m.ConfigPage })))
+const EstimationPage = lazy(() => import('./pages/EstimationPage').then((m) => ({ default: m.EstimationPage })))
+const FabricaPage = lazy(() => import('./pages/FabricaPage').then((m) => ({ default: m.FabricaPage })))
+const IncidentesPage = lazy(() => import('./pages/IncidentesPage').then((m) => ({ default: m.IncidentesPage })))
+const UploadPage = lazy(() => import('./pages/UploadPage').then((m) => ({ default: m.UploadPage })))
+const UploadIncidentesPage = lazy(() => import('./pages/UploadIncidentesPage').then((m) => ({ default: m.UploadIncidentesPage })))
 
 const navItems = [
   { to: '/', label: 'Módulo de Mejora Continua', icon: LayoutDashboard, end: true },
@@ -27,10 +27,55 @@ const navItems = [
 
 // Ruta protegida: cualquier usuario autenticado
 function ProtectedRoute({ children, superuserOnly = false }: { children: React.ReactNode; superuserOnly?: boolean }) {
-  const { isAuthenticated, isSuperUser } = useAuthStore()
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const { isAuthenticated, isSuperUser, isSessionExpired } = useAuthStore()
+  if (!isAuthenticated || isSessionExpired()) {
+    return <Navigate to="/login" replace />
+  }
   if (superuserOnly && !isSuperUser) return <Navigate to="/" replace />
   return <>{children}</>
+}
+
+function SessionTimeout() {
+  const { isAuthenticated, expiresAt, logout, isSessionExpired } = useAuthStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const expire = () => {
+      logout()
+      navigate('/login', { replace: true })
+    }
+
+    if (isSessionExpired()) {
+      expire()
+      return
+    }
+
+    const timeout = window.setTimeout(expire, Math.max(0, (expiresAt ?? 0) - Date.now()))
+    const checkSession = () => {
+      if (isSessionExpired()) expire()
+    }
+
+    window.addEventListener('focus', checkSession)
+    document.addEventListener('visibilitychange', checkSession)
+
+    return () => {
+      window.clearTimeout(timeout)
+      window.removeEventListener('focus', checkSession)
+      document.removeEventListener('visibilitychange', checkSession)
+    }
+  }, [expiresAt, isAuthenticated, isSessionExpired, logout, navigate])
+
+  return null
+}
+
+function PageLoader() {
+  return (
+    <div className="flex h-full items-center justify-center bg-corporate-surface">
+      <div className="text-sm font-medium text-corporate-muted">Cargando módulo...</div>
+    </div>
+  )
 }
 
 function Layout() {
@@ -125,70 +170,50 @@ function Layout() {
       </aside>
 
       <main className="flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/fabrica" element={<FabricaPage />} />
-          <Route path="/incidentes" element={<IncidentesPage />} />
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/estimacion" element={<EstimationPage />} />
-          <Route
-            path="/config"
-            element={
-              <ProtectedRoute superuserOnly>
-                <ConfigPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/fabrica" element={<FabricaPage />} />
+            <Route path="/incidentes" element={<IncidentesPage />} />
+            <Route path="/upload" element={<UploadPage />} />
+            <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/estimacion" element={<EstimationPage />} />
+            <Route
+              path="/config"
+              element={
+                <ProtectedRoute superuserOnly>
+                  <ConfigPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   )
 }
 
 export default function App() {
-  const { setSessionId } = useChatStore()
-  const { isAuthenticated, token, logout, login } = useAuthStore()
-  const [ready, setReady] = useState(false)
+  const { isAuthenticated, token, logout, setRole, isSessionExpired } = useAuthStore()
 
   useEffect(() => {
-    const init = async () => {
-      // Si hay sesión guardada en localStorage, verificar que el token sigue vigente
-      if (isAuthenticated && token) {
-        const { valid, role } = await verifyToken()
-        if (!valid) {
-          logout()
-        } else if (role) {
-          login(token, role)
-        }
-      }
-      // Crear sesión de chat
-      try {
-        const r = await createSession()
-        setSessionId(r.session_id)
-      } catch {
-        // ignorar — la app puede funcionar sin sesión de chat
-      }
-      setReady(true)
+    if (!isAuthenticated || !token) return
+    if (isSessionExpired()) {
+      logout()
+      return
     }
-    init()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  if (!ready) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-corporate-navy">
-        <div className="flex flex-col items-center gap-3 text-white">
-          <Loader2 size={32} className="animate-spin" />
-          <p className="text-sm opacity-75">Iniciando agente planificador</p>
-        </div>
-      </div>
-    )
-  }
+    verifyToken().then(({ valid, role }) => {
+      if (!valid) logout()
+      else if (role) setRole(role)
+    }).catch(() => {
+      logout()
+    })
+  }, [isAuthenticated, isSessionExpired, logout, setRole, token])
 
   return (
     <BrowserRouter>
+      <SessionTimeout />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route

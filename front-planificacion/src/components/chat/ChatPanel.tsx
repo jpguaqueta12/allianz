@@ -5,7 +5,7 @@ import { useDashboardStore } from '../../stores/dashboardStore'
 import { MessageBubble } from './MessageBubble'
 import { ToolCallCard } from './ToolCallCard'
 import { useSSE } from '../../hooks/useSSE'
-import { startChat } from '../../services/api'
+import { createSession, startChat } from '../../services/api'
 import { SSEEvent } from '../../types'
 import { PageHeader, StatusBadge } from '../ui/Corporate'
 
@@ -24,16 +24,26 @@ export function ChatPanel() {
   const {
     sessionId, messages, streaming, streamingContent, pendingToolCalls,
     addUserMessage, startStreaming, appendToken, addToolCall, updateToolResult,
-    finalizeAssistant, handleError,
+    finalizeAssistant, handleError, setSessionId,
   } = useChatStore()
 
   const [input, setInput] = useState('')
   const [streamUrl, setStreamUrl] = useState<string | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent, pendingToolCalls])
+
+  useEffect(() => {
+    if (sessionId || sessionLoading) return
+    setSessionLoading(true)
+    createSession()
+      .then((r) => setSessionId(r.session_id))
+      .catch(() => handleError('No se pudo crear la sesión del agente'))
+      .finally(() => setSessionLoading(false))
+  }, [handleError, sessionId, sessionLoading, setSessionId])
 
   useSSE(streamUrl, (event: SSEEvent) => {
     if (event.type === 'token' && event.content) {
@@ -53,12 +63,18 @@ export function ChatPanel() {
 
   const send = async (text?: string) => {
     const msg = text ?? input.trim()
-    if (!msg || !sessionId || streaming) return
+    if (!msg || streaming) return
     setInput('')
     addUserMessage(msg)
     startStreaming()
     try {
-      const resp = await startChat(sessionId, msg)
+      let activeSessionId = sessionId
+      if (!activeSessionId) {
+        const r = await createSession()
+        activeSessionId = r.session_id
+        setSessionId(activeSessionId)
+      }
+      const resp = await startChat(activeSessionId, msg)
       setStreamUrl(resp.stream_url)
     } catch (e) {
       handleError('Error al conectar con el agente')
@@ -154,11 +170,11 @@ export function ChatPanel() {
           />
           <button
             onClick={() => send()}
-            disabled={!input.trim() || streaming || !sessionId}
+            disabled={!input.trim() || streaming || sessionLoading}
             className="flex h-12 items-center gap-2 rounded-md bg-allianz-blue px-4 text-white transition-colors hover:bg-allianz-light disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Enviar mensaje"
           >
-            {streaming ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+            {streaming || sessionLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
           </button>
         </div>
       </div>

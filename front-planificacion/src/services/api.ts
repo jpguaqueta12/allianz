@@ -9,8 +9,12 @@ function getAuthHeaders(): Record<string, string> {
   try {
     const raw = localStorage.getItem('auth-storage')
     if (!raw) return {}
-    const { state } = JSON.parse(raw) as { state: { token: string | null } }
+    const { state } = JSON.parse(raw) as { state: { token: string | null; expiresAt?: number | null } }
     if (!state?.token) return {}
+    if (!state.expiresAt || Date.now() >= state.expiresAt) {
+      localStorage.removeItem('auth-storage')
+      return {}
+    }
     return { Authorization: `Bearer ${state.token}` }
   } catch {
     return {}

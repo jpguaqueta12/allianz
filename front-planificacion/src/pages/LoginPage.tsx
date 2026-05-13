@@ -1,11 +1,11 @@
-import { useState, FormEvent } from 'react'
+import { useEffect, useState, FormEvent } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 import { loginSuperUser } from '../services/api'
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuthStore()
+  const { login, logout, isAuthenticated, isSessionExpired } = useAuthStore()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -13,7 +13,11 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (isAuthenticated) return <Navigate to="/" replace />
+  useEffect(() => {
+    if (isAuthenticated && isSessionExpired()) logout()
+  }, [isAuthenticated, isSessionExpired, logout])
+
+  if (isAuthenticated && !isSessionExpired()) return <Navigate to="/" replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
