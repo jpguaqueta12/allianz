@@ -106,6 +106,8 @@ TECH_HORA_COLS = {
     "parametria": ["horas_analisis_parametria","horas_desarrollo_parametria","horas_pruebas_parametria","horas_af_parametria"],
     "qa":         ["horas_analisis_qa","horas_af_qa"],
 }
+PLAN_PROFILE_ALIASES = {"qa": "calidad", "dialogue": "gestion", "parametria": "gestion"}
+VALID_PLAN_PROFILES = {"java", "cobol", "gestion", "calidad"}
 
 QUALITY_TEAM_NAMES = (
     "Carlos Villadiego",
@@ -140,13 +142,14 @@ def _planificacion_items_from_extra(extra: object) -> list[dict]:
         if not isinstance(item, dict):
             continue
         responsable = (item.get("responsable") or "").strip()
-        perfil = (item.get("perfil") or "").strip()
+        raw_perfil = (item.get("perfil") or "").strip().lower()
+        perfil = PLAN_PROFILE_ALIASES.get(raw_perfil, raw_perfil)
         fase = (item.get("fase") or "").strip()
         try:
             horas = float(item.get("horas") or 0)
         except Exception:
             horas = 0
-        if responsable and perfil in TECH_HORA_COLS and fase and horas > 0:
+        if responsable and perfil in VALID_PLAN_PROFILES and fase and horas > 0:
             result.append({
                 "responsable": responsable,
                 "perfil": perfil,
@@ -553,6 +556,11 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
     for row in rows:
         item = dict(row)
         item["planificacion_items"] = _json_load(item.get("planificacion_items")) or []
+        if item["planificacion_items"]:
+            item["total_horas"] = round(
+                sum(float(plan.get("horas") or 0) for plan in item["planificacion_items"]),
+                1,
+            )
         if item.get("fecha_escalado"):
             java, cobol, qa = _horas_por_perfil_de_data(item)
             fecha_fin_base = _calcular_fecha_fin(
@@ -649,7 +657,7 @@ def _horas_por_perfil_de_data(data: dict) -> tuple[float, float, float]:
             p = it.get("perfil", "")
             if p == "java":   java  += h
             elif p == "cobol": cobol += h
-            elif p == "qa":    qa    += h
+            elif p in ("calidad", "gestion", "qa"): qa += h
     return java, cobol, qa
 
 
@@ -1600,15 +1608,20 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
         if items:
             java  = sum(i["horas"] for i in items if i["perfil"] == "java")
             cobol = sum(i["horas"] for i in items if i["perfil"] == "cobol")
-            qa    = sum(i["horas"] for i in items if i["perfil"] == "qa")
+            gestion = sum(i["horas"] for i in items if i["perfil"] == "gestion")
+            calidad = sum(i["horas"] for i in items if i["perfil"] == "calidad")
+            qa = gestion + calidad
         else:
+            gestion = 0
+            calidad = 0
             java  = sum(float(row[c] or 0) for c in [
                 "horas_analisis_java", "horas_desarrollo_java",
                 "horas_pruebas_java", "horas_af_java"])
             cobol = sum(float(row[c] or 0) for c in [
                 "horas_analisis_cobol", "horas_desarrollo_cobol",
                 "horas_pruebas_cobol", "horas_af_cobol"])
-            qa    = sum(float(row[c] or 0) for c in ["horas_analisis_qa", "horas_af_qa"])
+            calidad = sum(float(row[c] or 0) for c in ["horas_analisis_qa", "horas_af_qa"])
+            qa = calidad
 
         dev_horas = max(java, cobol)
         if dev_horas <= 0:
@@ -1640,6 +1653,8 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             "alerta_qa": alerta_qa,
             "java_horas": java,
             "cobol_horas": cobol,
+            "gestion_horas": gestion,
+            "calidad_horas": calidad,
             "qa_horas": qa,
         })
 

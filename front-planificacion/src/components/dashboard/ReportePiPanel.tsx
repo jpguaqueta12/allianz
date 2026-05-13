@@ -49,7 +49,7 @@ function daysBetween(from: Date, to: Date) {
 }
 
 function hoursByTech(item: BacklogItem) {
-  const result = { java: 0, cobol: 0, dialogue: 0, parametria: 0, qa: 0 }
+  const result = { java: 0, cobol: 0, gestion: 0, calidad: 0 }
   if (item.planificacion_items?.length) {
     item.planificacion_items.forEach(row => {
       result[row.perfil] += row.horas ?? 0
@@ -58,9 +58,9 @@ function hoursByTech(item: BacklogItem) {
   }
   result.java = (item.horas_analisis_java ?? 0) + (item.horas_desarrollo_java ?? 0) + (item.horas_pruebas_java ?? 0) + (item.horas_af_java ?? 0)
   result.cobol = (item.horas_analisis_cobol ?? 0) + (item.horas_desarrollo_cobol ?? 0) + (item.horas_pruebas_cobol ?? 0) + (item.horas_af_cobol ?? 0)
-  result.dialogue = (item.horas_analisis_dialogue ?? 0) + (item.horas_desarrollo_dialogue ?? 0) + (item.horas_pruebas_dialogue ?? 0) + (item.horas_af_dialogue ?? 0)
-  result.parametria = (item.horas_analisis_parametria ?? 0) + (item.horas_desarrollo_parametria ?? 0) + (item.horas_pruebas_parametria ?? 0) + (item.horas_af_parametria ?? 0)
-  result.qa = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
+  result.gestion = (item.horas_analisis_dialogue ?? 0) + (item.horas_desarrollo_dialogue ?? 0) + (item.horas_pruebas_dialogue ?? 0) + (item.horas_af_dialogue ?? 0)
+    + (item.horas_analisis_parametria ?? 0) + (item.horas_desarrollo_parametria ?? 0) + (item.horas_pruebas_parametria ?? 0) + (item.horas_af_parametria ?? 0)
+  result.calidad = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
   return result
 }
 

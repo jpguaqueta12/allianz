@@ -217,7 +217,7 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                   <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta Dev</th>
                   <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fin QA</th>
                   <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta QA</th>
-                  <th className="min-w-[130px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Horas (J / C / QA)</th>
+                  <th className="min-w-[170px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Horas (J / C / G / Cal)</th>
                   <th className="min-w-[180px] px-3 py-3 text-left font-semibold whitespace-nowrap">Equipo trabajo</th>
                 </tr>
               </thead>
@@ -266,8 +266,10 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                         {item.java_horas > 0 && <span className="text-blue-600">J:{item.java_horas}h</span>}
                         {item.java_horas > 0 && item.cobol_horas > 0 && ' '}
                         {item.cobol_horas > 0 && <span className="text-emerald-600">C:{item.cobol_horas}h</span>}
-                        {(item.java_horas > 0 || item.cobol_horas > 0) && item.qa_horas > 0 && ' '}
-                        {item.qa_horas > 0 && <span className="text-rose-600">QA:{item.qa_horas}h</span>}
+                        {(item.java_horas > 0 || item.cobol_horas > 0) && (item.gestion_horas ?? 0) > 0 && ' '}
+                        {(item.gestion_horas ?? 0) > 0 && <span className="text-amber-600">G:{item.gestion_horas}h</span>}
+                        {(item.java_horas > 0 || item.cobol_horas > 0 || (item.gestion_horas ?? 0) > 0) && (item.calidad_horas ?? item.qa_horas) > 0 && ' '}
+                        {(item.calidad_horas ?? item.qa_horas) > 0 && <span className="text-rose-600">Cal:{item.calidad_horas ?? item.qa_horas}h</span>}
                       </td>
                       <td className="px-3 py-2">
                         <span className="line-clamp-2 text-corporate-ink leading-snug" title={equipoTrabajo(item) ?? ''}>

@@ -41,24 +41,24 @@ function addCalendarDays(startIso: string, days: number): string {
 function calcularFechaFin(item: BacklogItem, piActivo?: PiInfo | null): string | null {
   if (!item.fecha_asignacion) return null
 
-  let java = 0, cobol = 0, qa = 0
+  let java = 0, cobol = 0, soporte = 0
 
   if (item.planificacion_items?.length) {
     for (const p of item.planificacion_items) {
       const h = p.horas ?? 0
       if (p.perfil === 'java')       java  += h
       else if (p.perfil === 'cobol') cobol += h
-      else if (p.perfil === 'qa')    qa    += h
+      else if (p.perfil === 'gestion' || p.perfil === 'calidad') soporte += h
     }
   } else {
     java  = (item.horas_analisis_java  ?? 0) + (item.horas_desarrollo_java  ?? 0)
           + (item.horas_pruebas_java   ?? 0) + (item.horas_af_java          ?? 0)
     cobol = (item.horas_analisis_cobol ?? 0) + (item.horas_desarrollo_cobol ?? 0)
           + (item.horas_pruebas_cobol  ?? 0) + (item.horas_af_cobol         ?? 0)
-    qa    = (item.horas_analisis_qa    ?? 0) + (item.horas_af_qa            ?? 0)
+    soporte = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
   }
 
-  const totalHoras = Math.max(java, cobol) + qa
+  const totalHoras = Math.max(java, cobol) + soporte
   if (totalHoras <= 0) return null
 
   const horasPorDia   = piActivo?.horas_por_dia ?? 8
@@ -171,19 +171,18 @@ function PaginationControls({
 
 // ── constantes planificación ───────────────────────────────────────────────────
 
-type Tech = 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
+type Tech = 'java' | 'cobol' | 'gestion' | 'calidad'
 type Fase = 'desarrollo'
 
-const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'CALIDAD' | null }[] = [
+const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'GESTION' | 'CALIDAD' }[] = [
   { id: 'java',       label: 'JAVA',       color: 'text-blue-700',   headerBg: 'bg-blue-600',   techMatch: 'JAVA'  },
   { id: 'cobol',      label: 'COBOL',      color: 'text-emerald-700',headerBg: 'bg-emerald-600',techMatch: 'COBOL' },
-  { id: 'dialogue',   label: 'DIALOGUE',   color: 'text-purple-700', headerBg: 'bg-purple-600', techMatch: null    },
-  { id: 'parametria', label: 'PARAMETRÍA', color: 'text-orange-700', headerBg: 'bg-orange-500', techMatch: null    },
-  { id: 'qa',         label: 'PRUEBAS QA', color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: 'CALIDAD' },
+  { id: 'gestion',    label: 'GESTIÓN',    color: 'text-amber-700',  headerBg: 'bg-amber-500',  techMatch: 'GESTION' },
+  { id: 'calidad',    label: 'CALIDAD',    color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: 'CALIDAD' },
 ]
 
 const FASES: { id: Fase; label: string; techs: Tech[] }[] = [
-  { id: 'desarrollo', label: 'DESARROLLO', techs: ['java','cobol','dialogue','parametria','qa'] },
+  { id: 'desarrollo', label: 'DESARROLLO', techs: ['java','cobol','gestion','calidad'] },
 ]
 
 function horaField(fase: Fase, tech: Tech): keyof PlanificacionData {
@@ -191,6 +190,19 @@ function horaField(fase: Fase, tech: Tech): keyof PlanificacionData {
 }
 function respField(tech: Tech): keyof PlanificacionData {
   return `responsable_${tech}` as keyof PlanificacionData
+}
+
+function legacyRespField(tech: Tech): keyof PlanificacionData | null {
+  if (tech === 'java' || tech === 'cobol') return respField(tech)
+  if (tech === 'calidad') return 'responsable_qa'
+  return null
+}
+
+function normalizePerfil(perfil: string): Tech {
+  if (perfil === 'qa') return 'calidad'
+  if (perfil === 'dialogue' || perfil === 'parametria') return 'gestion'
+  if (perfil === 'cobol' || perfil === 'gestion' || perfil === 'calidad') return perfil
+  return 'java'
 }
 
 const RESPONSABLE_SEPARATOR = ' | '
@@ -250,9 +262,15 @@ function newRow(): PlanificacionRow {
 function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
   const rows: PlanificacionRow[] = []
   TECHS.forEach(tech => {
-    const responsables = splitResponsables(plan[respField(tech.id)] as string | null)
-    const horas = (['analisis', 'desarrollo', 'pruebas', 'af'] as const)
-      .reduce((sum, fase) => sum + (((plan[`horas_${fase}_${tech.id}` as keyof PlanificacionData] as number | null) ?? 0)), 0)
+    const respKey = legacyRespField(tech.id)
+    const responsables = respKey ? splitResponsables(plan[respKey] as string | null) : []
+    const horas = tech.id === 'calidad'
+      ? (plan.horas_analisis_qa ?? 0) + (plan.horas_af_qa ?? 0)
+      : tech.id === 'gestion'
+      ? (plan.horas_analisis_dialogue ?? 0) + (plan.horas_desarrollo_dialogue ?? 0) + (plan.horas_pruebas_dialogue ?? 0) + (plan.horas_af_dialogue ?? 0)
+        + (plan.horas_analisis_parametria ?? 0) + (plan.horas_desarrollo_parametria ?? 0) + (plan.horas_pruebas_parametria ?? 0) + (plan.horas_af_parametria ?? 0)
+      : (['analisis', 'desarrollo', 'pruebas', 'af'] as const)
+        .reduce((sum, fase) => sum + (((plan[`horas_${fase}_${tech.id}` as keyof PlanificacionData] as number | null) ?? 0)), 0)
     if (horas <= 0) return
     if (responsables.length === 0) {
       rows.push({ id: crypto.randomUUID(), responsable: null, perfil: tech.id, fase: 'desarrollo', horas })
@@ -269,7 +287,7 @@ function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
 function itemToRows(item: BacklogItem): PlanificacionRow[] {
   const stored = item.planificacion_items ?? []
   if (stored.length) {
-    return stored.map(row => ({ ...row, fase: 'desarrollo' as const, id: crypto.randomUUID() }))
+    return stored.map(row => ({ ...row, perfil: normalizePerfil(row.perfil), fase: 'desarrollo' as const, id: crypto.randomUUID() }))
   }
   const legacy = legacyRowsFromPlan(itemToPlan(item))
   return legacy.length ? legacy : [newRow()]
@@ -278,7 +296,7 @@ function itemToRows(item: BacklogItem): PlanificacionRow[] {
 function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
   const data: PlanificacionData = { ...PLAN_VACÍO, planificacion_items: [] }
   const responsablesPorPerfil: Record<Tech, string[]> = {
-    java: [], cobol: [], dialogue: [], parametria: [], qa: [],
+    java: [], cobol: [], gestion: [], calidad: [],
   }
 
   rows.forEach(row => {
@@ -300,7 +318,8 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
   })
 
   TECHS.forEach(tech => {
-    data[respField(tech.id)] = joinResponsables(responsablesPorPerfil[tech.id]) as never
+    const respKey = legacyRespField(tech.id)
+    if (respKey) data[respKey] = joinResponsables(responsablesPorPerfil[tech.id]) as never
   })
 
   return data
@@ -310,8 +329,7 @@ function responsablesForPerfil(personas: ResponsableDisponible[], perfil: Tech) 
   const tech = TECHS.find(t => t.id === perfil)
   return personas.filter(p => {
     if (tech?.techMatch === 'CALIDAD') return p.tecnologia === 'CALIDAD' || p.tecnologia === 'QA'
-    if (tech?.techMatch) return p.tecnologia === tech.techMatch
-    return true
+    return p.tecnologia === tech?.techMatch
   })
 }
 
@@ -328,7 +346,10 @@ function responsablesByPerfil(item: BacklogItem): { t: typeof TECHS[number]; res
   }
 
   return TECHS
-    .map(t => ({ t, responsables: splitResponsables(item[respField(t.id)] as string | null) }))
+    .map(t => {
+      const respKey = legacyRespField(t.id)
+      return { t, responsables: respKey ? splitResponsables(item[respKey] as string | null) : [] }
+    })
     .filter(x => x.responsables.length > 0)
 }
 
@@ -604,8 +625,7 @@ function ResponsablesCell({ item }: { item: BacklogItem }) {
         <span key={t.id} className={clsx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium',
           t.id === 'java'       ? 'border-blue-200 bg-blue-50 text-blue-700'    :
           t.id === 'cobol'      ? 'border-emerald-200 bg-emerald-50 text-emerald-700' :
-          t.id === 'dialogue'   ? 'border-purple-200 bg-purple-50 text-purple-700' :
-          t.id === 'parametria' ? 'border-orange-200 bg-orange-50 text-orange-700' :
+          t.id === 'gestion'    ? 'border-amber-200 bg-amber-50 text-amber-700' :
                                   'border-rose-200 bg-rose-50 text-rose-700'
         )}>
           <span className="font-bold">{t.label}</span>

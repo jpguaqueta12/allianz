@@ -256,7 +256,7 @@ export async function createBacklogItem(modulo: string, piId: number | null | un
   return r.json()
 }
 
-export type PlanificacionPerfil = 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
+export type PlanificacionPerfil = 'java' | 'cobol' | 'gestion' | 'calidad'
 export type PlanificacionFase = 'desarrollo'
 
 export interface PlanificacionItem {

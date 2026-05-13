@@ -96,7 +96,7 @@ export interface BacklogItem {
   horas_af_qa: number | null
   planificacion_items?: {
     responsable: string | null
-    perfil: 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
+    perfil: 'java' | 'cobol' | 'gestion' | 'calidad'
     fase: 'desarrollo'
     horas: number | null
   }[]
@@ -135,6 +135,8 @@ export interface AlertaItem {
   alerta_qa: 'verde' | 'amarilla' | 'roja' | null
   java_horas: number
   cobol_horas: number
+  gestion_horas?: number
+  calidad_horas?: number
   qa_horas: number
 }
 
