@@ -2,6 +2,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import unicodedata
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, HTTPException, UploadFile, File
@@ -15,8 +16,8 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 # Mapeo de nombres de columna del Excel → campo interno
 # Soporta variaciones de Jira (inglés/español, con espacios o guiones)
 _COL_ALIASES: dict[str, list[str]] = {
-    "ticket_key":            ["issue key", "key", "issuekey", "id", "ticket", "issue id"],
-    "summary":               ["summary", "resumen", "título", "titulo", "title", "nombre"],
+    "ticket_key":            ["issue key", "key", "issuekey", "id", "ticket", "issue id", "ibl", "id ibl", "ticket ibl", "codigo ibl", "código ibl"],
+    "summary":               ["summary", "resumen", "título", "titulo", "title", "nombre", "descripcion", "descripción", "detalle", "asunto"],
     "issue_type":            ["issue type", "issuetype", "tipo", "type"],
     "status":                ["status", "estado"],
     "priority":              ["priority", "prioridad"],
@@ -37,14 +38,178 @@ _COL_ALIASES: dict[str, list[str]] = {
 }
 
 
+def _normalize_label(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.strip().lower())
+    without_accents = "".join(c for c in normalized if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", " ", without_accents).strip()
+
+
 def _resolve_columns(headers: list[str]) -> dict[str, int | None]:
     mapping: dict[str, int | None] = {f: None for f in _COL_ALIASES}
+    normalized_aliases = {
+        field: {_normalize_label(alias) for alias in aliases}
+        for field, aliases in _COL_ALIASES.items()
+    }
     for i, h in enumerate(headers):
-        hl = h.strip().lower()
+        hl = _normalize_label(h)
         for field, aliases in _COL_ALIASES.items():
-            if mapping[field] is None and hl in aliases:
+            if mapping[field] is None and hl in normalized_aliases[field]:
                 mapping[field] = i
     return mapping
+
+
+def _column_mapping_quality(mapping: dict[str, int | None]) -> int:
+    important = ("ticket_key", "summary", "status", "epic_link", "assignee", "story_points")
+    return sum(1 for field in important if mapping.get(field) is not None)
+
+
+def _needs_ai_column_mapping(mapping: dict[str, int | None]) -> bool:
+    return (
+        mapping.get("ticket_key") is None
+        or mapping.get("summary") is None
+        or _column_mapping_quality(mapping) < 3
+    )
+
+
+def _cell_to_str(value) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def _extract_json_object(text: str) -> dict | None:
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+    if match:
+        cleaned = match.group(0)
+    try:
+        parsed = json.loads(cleaned)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def _resolve_ai_header_index(value, headers: list[str]) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        if 0 <= value < len(headers):
+            return value
+        if 1 <= value <= len(headers):
+            return value - 1
+        return None
+
+    wanted = _normalize_label(str(value))
+    if not wanted or wanted in {"null", "none", "ninguno"}:
+        return None
+    normalized_headers = [_normalize_label(h) for h in headers]
+    for i, header in enumerate(normalized_headers):
+        if wanted == header:
+            return i
+    for i, header in enumerate(normalized_headers):
+        if wanted and (wanted in header or header in wanted):
+            return i
+    return None
+
+
+async def _resolve_columns_with_ai(
+    headers: list[str],
+    data_rows: list,
+    heuristic_mapping: dict[str, int | None],
+) -> tuple[dict[str, int | None], dict]:
+    if not _needs_ai_column_mapping(heuristic_mapping):
+        return heuristic_mapping, {"used_ai": False, "confidence": None, "reason": None}
+
+    sample_rows = []
+    for row in data_rows[:8]:
+        sample_rows.append({
+            headers[i]: _cell_to_str(row[i])[:120] if i < len(row) else ""
+            for i in range(len(headers))
+            if headers[i]
+        })
+
+    fields = {
+        "ticket_key": "Identificador unico del ticket o IBL, por ejemplo IBLCDM-22569, MD-123 o FAST-45.",
+        "summary": "Resumen, titulo, asunto o descripcion corta del requerimiento.",
+        "issue_type": "Tipo de issue, historia, bug, tarea, requerimiento.",
+        "status": "Estado del ticket.",
+        "priority": "Prioridad.",
+        "resolution": "Resolucion.",
+        "assignee": "Responsable o asignado.",
+        "reporter": "Reportador o solicitante.",
+        "created": "Fecha de creacion.",
+        "updated": "Fecha de actualizacion.",
+        "epic_link": "Epica, iniciativa, proyecto, frente o referencia usada para clasificar MD/Fabrica.",
+        "story_points": "Puntos de historia, esfuerzo o estimacion numerica.",
+        "sprint": "Sprint.",
+        "labels": "Etiquetas.",
+        "components": "Componentes.",
+        "fix_version": "Version o release.",
+        "project": "Proyecto.",
+        "include_release_notes": "Indicador de notas de release.",
+        "assigned_team": "Equipo asignado.",
+    }
+    prompt = (
+        "Eres un asistente que mapea columnas de Excel a campos internos de Jira/backlog.\n"
+        "Devuelve solo JSON valido. No inventes columnas: usa exactamente un encabezado recibido o null.\n"
+        "Campos internos y significado:\n"
+        f"{json.dumps(fields, ensure_ascii=False)}\n\n"
+        "Formato requerido:\n"
+        "{\"mapping\":{\"ticket_key\":\"encabezado o null\", ...},\"confidence\":0.0,\"reason\":\"breve\"}\n\n"
+        f"Encabezados: {json.dumps(headers, ensure_ascii=False)}\n"
+        f"Muestra de filas: {json.dumps(sample_rows, ensure_ascii=False, default=str)}"
+    )
+
+    try:
+        from app.services.llm_service import get_llm
+
+        response = await get_llm().ainvoke(prompt)
+        content = getattr(response, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text", part)) if isinstance(part, dict) else str(part) for part in content)
+        parsed = _extract_json_object(str(content))
+        ai_mapping = parsed.get("mapping") if parsed else None
+        if not isinstance(ai_mapping, dict):
+            raise ValueError("La IA no devolvio un mapping valido")
+
+        mapping = dict(heuristic_mapping)
+        for field in _COL_ALIASES:
+            if mapping.get(field) is not None:
+                continue
+            idx = _resolve_ai_header_index(ai_mapping.get(field), headers)
+            if idx is not None:
+                mapping[field] = idx
+
+        return mapping, {
+            "used_ai": True,
+            "confidence": parsed.get("confidence"),
+            "reason": parsed.get("reason"),
+        }
+    except Exception as exc:
+        logger.warning("backlog_ai_column_mapping_failed", error=str(exc))
+        return heuristic_mapping, {
+            "used_ai": False,
+            "confidence": None,
+            "reason": f"No se pudo usar IA para mapear columnas: {exc}",
+        }
+
+
+async def _resolve_columns_for_rows(all_rows: list) -> tuple[list[str], dict[str, int | None], dict]:
+    raw_headers = [str(h).strip() if h is not None else f"Col{i+1}"
+                   for i, h in enumerate(all_rows[0])]
+    heuristic = _resolve_columns(raw_headers)
+    mapping, ai_meta = await _resolve_columns_with_ai(raw_headers, all_rows[1:], heuristic)
+    mapped_headers = {
+        field: raw_headers[idx]
+        for field, idx in mapping.items()
+        if idx is not None and idx < len(raw_headers)
+    }
+    meta = {
+        **ai_meta,
+        "mapped_headers": mapped_headers,
+        "mapped_fields_count": len(mapped_headers),
+    }
+    return raw_headers, mapping, meta
 
 
 def _extract_project_key(epic_link: str) -> str:
@@ -87,15 +252,19 @@ def _safe_datetime(value: str) -> datetime | None:
     return None
 
 
-def _parse_rows(all_rows: list, modulo_lookup: dict[str, str]) -> tuple[list[str], list[dict]]:
+def _parse_rows(
+    all_rows: list,
+    modulo_lookup: dict[str, str],
+    col_map: dict[str, int | None] | None = None,
+) -> tuple[list[str], list[dict]]:
     """Convierte las filas crudas del Excel en dicts clasificados."""
     raw_headers = [str(h).strip() if h is not None else f"Col{i+1}"
                    for i, h in enumerate(all_rows[0])]
-    col_map = _resolve_columns(raw_headers)
+    col_map = col_map or _resolve_columns(raw_headers)
     known_indices = {v for v in col_map.values() if v is not None}
 
     rows: list[dict] = []
-    for raw in all_rows[1:]:
+    for source_row, raw in enumerate(all_rows[1:], start=2):
         cells = [str(v).strip() if v is not None else "" for v in raw]
         if not any(cells):           # fila completamente vacía → saltar
             continue
@@ -136,9 +305,59 @@ def _parse_rows(all_rows: list, modulo_lookup: dict[str, str]) -> tuple[list[str
             "fix_version":           get("fix_version"),
             "modulo":                modulo,
             "extra":                 extra or None,
+            "_source_row":           source_row,
         })
 
     return raw_headers, rows
+
+
+def _normalize_ticket_key(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = re.sub(r"\s+", "", value.strip().upper())
+    return normalized or None
+
+
+def _find_file_duplicates(rows: list[dict]) -> list[dict]:
+    seen: dict[str, dict] = {}
+    for row in rows:
+        key = _normalize_ticket_key(row.get("ticket_key"))
+        if not key:
+            continue
+        entry = seen.setdefault(key, {"ticket_key": key, "veces": 0, "filas": []})
+        entry["veces"] += 1
+        entry["filas"].append(row.get("_source_row"))
+    return [entry for entry in seen.values() if entry["veces"] > 1]
+
+
+async def _find_existing_duplicates(pool, pi_id: int, keys: list[str]) -> list[dict]:
+    normalized_keys = sorted({k for k in (_normalize_ticket_key(key) for key in keys) if k})
+    if not normalized_keys:
+        return []
+
+    duplicates: list[dict] = []
+    tables = [
+        ("MEJORA_CONTINUA", "backlog_mejora_continua"),
+        ("FABRICA", "backlog_fabrica"),
+    ]
+    for chunk_start in range(0, len(normalized_keys), 400):
+        chunk = normalized_keys[chunk_start:chunk_start + 400]
+        placeholders = ",".join(f"${i + 2}" for i in range(len(chunk)))
+        for modulo, table in tables:
+            rows = await pool.fetch(
+                f"""
+                SELECT ticket_key
+                FROM {table}
+                WHERE pi_id=$1 AND UPPER(REPLACE(ticket_key, ' ', '')) IN ({placeholders})
+                """,
+                pi_id,
+                *chunk,
+            )
+            duplicates.extend({
+                "ticket_key": _normalize_ticket_key(r["ticket_key"]) or r["ticket_key"],
+                "modulo": modulo,
+            } for r in rows)
+    return duplicates
 
 
 def _find_header_row(rows: list) -> int:
@@ -146,16 +365,29 @@ def _find_header_row(rows: list) -> int:
     Busca en las primeras 10 filas cuál es la fila de encabezados.
     Devuelve su índice. Usa la que tenga más coincidencias con las columnas conocidas.
     """
-    all_aliases = {alias for aliases in _COL_ALIASES.values() for alias in aliases}
+    all_aliases = {_normalize_label(alias) for aliases in _COL_ALIASES.values() for alias in aliases}
     best_idx, best_score = 0, 0
     for i, row in enumerate(rows[:10]):
         score = sum(
             1 for cell in row
-            if cell is not None and str(cell).strip().lower() in all_aliases
+            if cell is not None and _normalize_label(str(cell)) in all_aliases
         )
         if score > best_score:
             best_score, best_idx = score, i
     return best_idx
+
+
+def _ensure_ticket_key_mapping(col_map: dict[str, int | None], mapping_meta: dict) -> None:
+    if col_map.get("ticket_key") is not None:
+        return
+    detail = (
+        "No se pudo identificar la columna del IBL/ticket. Renombra la columna a IBL, Ticket o Issue Key, "
+        "o revisa la configuración de Azure OpenAI para que la IA pueda mapear el archivo."
+    )
+    reason = mapping_meta.get("reason")
+    if reason:
+        detail = f"{detail} Detalle: {reason}"
+    raise HTTPException(status_code=422, detail=detail)
 
 
 def _read_excel_rows(content: bytes) -> list:
@@ -259,9 +491,7 @@ async def debug_excel(file: UploadFile = File(...)):
     """Diagnóstico: muestra encabezados reales, columnas detectadas y muestra de epic_links."""
     content = await file.read()
     raw_rows = _read_excel_rows(content)
-    raw_headers = [str(h).strip() if h is not None else f"Col{i+1}"
-                   for i, h in enumerate(raw_rows[0])]
-    col_map = _resolve_columns(raw_headers)
+    raw_headers, col_map, mapping_meta = await _resolve_columns_for_rows(raw_rows)
 
     from app.db.connection import get_pool
     modulo_lookup = await _build_modulo_lookup(get_pool())
@@ -283,6 +513,9 @@ async def debug_excel(file: UploadFile = File(...)):
     return {
         "encabezados_originales": raw_headers,
         "columnas_mapeadas": {k: v for k, v in col_map.items() if v is not None},
+        "columnas_detectadas": mapping_meta["mapped_headers"],
+        "mapeo_con_ia": mapping_meta["used_ai"],
+        "confianza_ia": mapping_meta["confidence"],
         "epic_link_col_index": epic_idx,
         "epic_link_muestras": epic_samples,
         "proyectos_en_bd": modulo_lookup,
@@ -309,15 +542,26 @@ async def analizar_backlog(file: UploadFile = File(...)):
         raise HTTPException(status_code=422, detail=str(e))
 
     modulo_lookup = await _build_modulo_lookup(pool)
-    _, rows = _parse_rows(raw_rows, modulo_lookup)
+    _, col_map, mapping_meta = await _resolve_columns_for_rows(raw_rows)
+    _ensure_ticket_key_mapping(col_map, mapping_meta)
+    _, rows = _parse_rows(raw_rows, modulo_lookup, col_map)
 
     mc_rows  = [r for r in rows if r["modulo"] == "MEJORA_CONTINUA"]
     fab_rows = [r for r in rows if r["modulo"] == "FABRICA"]
+    duplicados_archivo = _find_file_duplicates(rows)
+    pi_mc = await pool.fetchval(
+        "SELECT id FROM pi WHERE activo=TRUE AND modulo='MEJORA_CONTINUA' LIMIT 1"
+    )
+    duplicados_bd = await _find_existing_duplicates(
+        pool,
+        pi_mc,
+        [r["ticket_key"] for r in rows if r.get("ticket_key")],
+    ) if pi_mc else []
 
     # Serializar decimals y datetimes para JSON
     def safe(r: dict) -> dict:
         return {k: (str(v) if isinstance(v, (Decimal, datetime)) else v)
-                for k, v in r.items() if k != "extra"}
+                for k, v in r.items() if k not in {"extra", "_source_row"}}
 
     return {
         "total":          len(rows),
@@ -329,6 +573,13 @@ async def analizar_backlog(file: UploadFile = File(...)):
             _extract_project_key(r["epic_link"])
             for r in rows if r["epic_link"]
         }),
+        "columnas_detectadas": mapping_meta["mapped_headers"],
+        "mapeo_con_ia": mapping_meta["used_ai"],
+        "confianza_ia": mapping_meta["confidence"],
+        "nota_mapeo": mapping_meta["reason"],
+        "duplicados_archivo": duplicados_archivo,
+        "duplicados_bd": duplicados_bd,
+        "total_duplicados": len(duplicados_archivo) + len(duplicados_bd),
     }
 
 
@@ -363,12 +614,22 @@ async def importar_backlog(file: UploadFile = File(...)):
     pi_fab = pi_mc
 
     modulo_lookup = await _build_modulo_lookup(pool)
-    _, rows = _parse_rows(raw_rows, modulo_lookup)
+    _, col_map, mapping_meta = await _resolve_columns_for_rows(raw_rows)
+    _ensure_ticket_key_mapping(col_map, mapping_meta)
+    _, rows = _parse_rows(raw_rows, modulo_lookup, col_map)
 
     ins_mc = ins_fab = skipped = 0
+    seen_in_file: set[str] = set()
 
     async with pool.acquire() as conn:
         for r in rows:
+            normalized_key = _normalize_ticket_key(r.get("ticket_key"))
+            if normalized_key and normalized_key in seen_in_file:
+                skipped += 1
+                continue
+            if normalized_key:
+                seen_in_file.add(normalized_key)
+
             modulo = r["modulo"]
             if modulo == "MEJORA_CONTINUA":
                 sql, table, pi_id = _INSERT_MC, "backlog_mejora_continua", pi_mc
@@ -377,11 +638,26 @@ async def importar_backlog(file: UploadFile = File(...)):
 
             try:
                 if r.get("ticket_key"):
-                    exists = await conn.fetchval(
-                        f"SELECT COUNT(*) FROM {table} WHERE ticket_key=$1 AND pi_id=$2",
-                        r["ticket_key"], pi_id,
+                    exists_same_table = await conn.fetchval(
+                        f"SELECT COUNT(*) FROM {table} WHERE UPPER(REPLACE(ticket_key, ' ', ''))=$1 AND pi_id=$2",
+                        normalized_key, pi_id,
                     )
-                    if exists:
+                    exists_other_table = await conn.fetchval(
+                        """
+                        SELECT COUNT(*)
+                        FROM backlog_mejora_continua
+                        WHERE UPPER(REPLACE(ticket_key, ' ', ''))=$1 AND pi_id=$2
+                        """,
+                        normalized_key, pi_id,
+                    ) if table == "backlog_fabrica" else await conn.fetchval(
+                        """
+                        SELECT COUNT(*)
+                        FROM backlog_fabrica
+                        WHERE UPPER(REPLACE(ticket_key, ' ', ''))=$1 AND pi_id=$2
+                        """,
+                        normalized_key, pi_id,
+                    )
+                    if exists_same_table or exists_other_table:
                         skipped += 1
                         continue
                 res = await conn.execute(sql, *_row_params(r, pi_id))

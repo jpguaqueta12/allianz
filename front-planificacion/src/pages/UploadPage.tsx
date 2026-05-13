@@ -163,6 +163,41 @@ export function UploadPage() {
                 ))}
               </div>
 
+              {/* Mapeo y duplicados */}
+              <div className="space-y-3">
+                {analisis.mapeo_con_ia && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                    <p className="text-xs font-semibold text-allianz-blue">Columnas mapeadas con IA</p>
+                    <p className="mt-1 text-xs text-corporate-muted">
+                      Se usó Azure OpenAI porque el Excel no coincidía con la estructura esperada.
+                      {typeof analisis.confianza_ia === 'number' ? ` Confianza: ${Math.round(analisis.confianza_ia * 100)}%.` : ''}
+                    </p>
+                  </div>
+                )}
+
+                {!!analisis.total_duplicados && analisis.total_duplicados > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-700" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-amber-800">IBL repetidos detectados</p>
+                        <p className="mt-1 text-xs text-amber-700">
+                          Se omitirán al importar: {analisis.duplicados_archivo?.length ?? 0} repetidos en el archivo
+                          {' '}y {analisis.duplicados_bd?.length ?? 0} ya existentes en el backlog.
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[...(analisis.duplicados_archivo ?? []), ...(analisis.duplicados_bd ?? [])].slice(0, 12).map((dup, i) => (
+                            <span key={`${dup.ticket_key}-${i}`} className="rounded border border-amber-300 bg-white px-2 py-0.5 font-mono text-[11px] text-amber-800">
+                              {dup.ticket_key}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Épicas detectadas */}
               {analisis.proyectos_detectados.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-corporate-line bg-white px-4 py-3">

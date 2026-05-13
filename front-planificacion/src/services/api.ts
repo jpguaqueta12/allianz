@@ -452,6 +452,13 @@ export interface BacklogAnalisis {
   muestra_mc: BacklogTicket[]
   muestra_fabrica: BacklogTicket[]
   proyectos_detectados: string[]
+  columnas_detectadas?: Record<string, string>
+  mapeo_con_ia?: boolean
+  confianza_ia?: number | null
+  nota_mapeo?: string | null
+  duplicados_archivo?: { ticket_key: string; veces: number; filas: number[] }[]
+  duplicados_bd?: { ticket_key: string; modulo: string }[]
+  total_duplicados?: number
 }
 
 export interface BacklogImportResult {
