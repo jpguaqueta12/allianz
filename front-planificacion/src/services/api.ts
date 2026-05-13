@@ -374,6 +374,15 @@ export async function updateBacklogStatus(
   return r.json()
 }
 
+export async function deleteBacklogItem(modulo: string, ticketId: number): Promise<{ deleted: boolean; id: number }> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}`, { method: 'DELETE' })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error eliminando elemento' }))
+    throw new Error(err.detail ?? 'Error eliminando elemento')
+  }
+  return r.json()
+}
+
 export async function updatePlanificacion(
   modulo: string,
   ticketId: number,

@@ -626,6 +626,12 @@ async def create_backlog_item(pool: Any, modulo: str, pi_id: int, data: dict) ->
     raise ValueError("No se pudo cargar el ticket creado")
 
 
+async def delete_backlog_item(pool: Any, modulo: str, ticket_id: int) -> bool:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    result = await pool.execute(f"DELETE FROM {table} WHERE id=$1", ticket_id)
+    return result == "DELETE 1"
+
+
 def _horas_por_perfil_de_data(data: dict) -> tuple[float, float, float]:
     java  = sum(data.get(f) or 0 for f in [
         'horas_analisis_java', 'horas_desarrollo_java', 'horas_pruebas_java', 'horas_af_java'])

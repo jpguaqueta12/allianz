@@ -6,7 +6,7 @@ import {
 import clsx from 'clsx'
 import { BacklogItem, PiInfo } from '../../types'
 import {
-  getBacklog, createBacklogItem, updatePlanificacion, updateFechaAsignacion, updateEscalamiento, updateBacklogStatus, getResponsables,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateEscalamiento, updateBacklogStatus, getResponsables,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -1089,6 +1089,57 @@ function ManualBacklogModal({
   )
 }
 
+function DeleteBacklogModal({
+  item,
+  loading,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  item: BacklogItem
+  loading: boolean
+  error: string | null
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-xl border border-corporate-line bg-white shadow-2xl">
+        <div className="flex items-start gap-3 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <AlertCircle size={18} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-corporate-ink">Eliminar elemento de backlog</p>
+            <p className="mt-1 text-xs text-corporate-muted">
+              Se eliminará de la base de datos el elemento <span className="font-mono font-semibold text-corporate-ink">{item.ticket_key ?? `#${item.id}`}</span>.
+            </p>
+            <p className="mt-2 line-clamp-2 text-xs text-corporate-ink" title={item.summary}>{item.summary}</p>
+            {error && <p className="mt-3 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-corporate-line px-5 py-4">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-lg border border-corporate-line px-4 py-2 text-sm font-medium text-corporate-muted hover:text-corporate-ink disabled:opacity-40"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Panel principal ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -1108,6 +1159,9 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
   const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState<BacklogItem | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [page, setPage]       = useState(1)
   const [pageSize, setPageSize] = useState(25)
 
@@ -1143,6 +1197,23 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       const merged = { ...it, ...updated, total_horas: total || null, fecha_asignacion: updated.fecha_asignacion ?? null }
       return { ...merged, fecha_finalizacion: calcularFechaFin(merged, piActivo) }
     }))
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!deleting) return
+    setDeleteLoading(true)
+    setDeleteError(null)
+    try {
+      await deleteBacklogItem(modulo, deleting.id)
+      setItems(prev => prev.filter(item => item.id !== deleting.id))
+      if (editing?.id === deleting.id) setEditing(null)
+      if (viewing?.id === deleting.id) setViewing(null)
+      setDeleting(null)
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : 'Error eliminando elemento')
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   const filtered = items.filter(item => {
@@ -1241,6 +1312,15 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           }}
         />
       )}
+      {deleting && (
+        <DeleteBacklogModal
+          item={deleting}
+          loading={deleteLoading}
+          error={deleteError}
+          onCancel={() => { setDeleting(null); setDeleteError(null) }}
+          onConfirm={handleDeleteConfirmed}
+        />
+      )}
 
       <div className="space-y-3">
         {/* barra búsqueda */}
@@ -1288,7 +1368,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
-                <th className="min-w-[72px] px-3 py-3 text-center font-semibold">Detalle</th>
+                <th className="min-w-[110px] px-3 py-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -1376,7 +1456,8 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         : <span className="text-corporate-muted">—</span>
                       }
                     </td>
-                    <td className="px-2 py-2 text-center">
+                    <td className="px-2 py-2">
+                      <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => setViewing(item)}
                         title="Ver detalle"
@@ -1385,6 +1466,14 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         <Eye size={14} />
                         Ver
                       </button>
+                      <button
+                        onClick={() => { setDeleting(item); setDeleteError(null) }}
+                        title="Eliminar de la base de datos"
+                        className="inline-flex h-7 items-center justify-center rounded-lg px-2 text-red-500 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      </div>
                     </td>
                   </tr>
                 )

@@ -258,6 +258,19 @@ async def update_status(modulo: str, ticket_id: int, body: StatusRequest):
     }
 
 
+@router.delete("/backlog/{modulo}/{ticket_id}")
+async def delete_backlog(modulo: str, ticket_id: int):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    mod = modulo.upper()
+    if mod not in ("MEJORA_CONTINUA", "FABRICA"):
+        raise HTTPException(status_code=400, detail="Módulo no soportado para eliminar backlog")
+    deleted = await Q.delete_backlog_item(get_pool(), mod, ticket_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Elemento de backlog no encontrado")
+    return {"deleted": True, "id": ticket_id}
+
+
 @router.get("/alertas/{modulo}")
 async def get_alertas(modulo: str, pi_id: Optional[int] = Query(default=None)):
     from app.db.connection import get_pool
