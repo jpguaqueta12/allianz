@@ -1,7 +1,7 @@
 export interface PersonaCapacidad {
   id: number
   nombre: string
-  tecnologia: 'COBOL' | 'JAVA'
+  tecnologia: 'COBOL' | 'JAVA' | 'QA'
   rol: string
   proyecto_principal: string | null
   capacidad: number | null
@@ -45,7 +45,7 @@ export interface PiInfo {
 export interface PersonaDisponible {
   id: number
   nombre: string
-  tecnologia: 'COBOL' | 'JAVA'
+  tecnologia: 'COBOL' | 'JAVA' | 'QA'
   rol: string
 }
 
@@ -97,7 +97,7 @@ export interface BacklogItem {
   planificacion_items?: {
     responsable: string | null
     perfil: 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
-    fase: 'analisis' | 'desarrollo' | 'pruebas' | 'af'
+    fase: 'desarrollo'
     horas: number | null
   }[]
   total_horas: number | null
@@ -126,6 +126,7 @@ export interface AlertaItem {
   ticket_key: string | null
   summary: string
   assignee: string | null
+  equipo: string | null
   fecha_asignacion: string
   fecha_fin_desarrollo: string
   fecha_fin_qa: string | null

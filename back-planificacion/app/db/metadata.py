@@ -399,6 +399,11 @@ PERSONA_SEED = [
     ("Jhon Carlos Colorado Angulo",        "JAVA",  "Desarrollador"),
     ("Andres Sebastian Cubillos",          "JAVA",  "Desarrollador"),
     ("Santiago Nicolas Briñez Garcia",     "JAVA",  "Desarrollador"),
+    # Gestión y calidad
+    ("Carlos Villadiego",                  "QA",    "Desarrollador"),
+    ("Rafael Alvarado",                    "QA",    "Desarrollador"),
+    ("Laura Fernanda Pardo",               "QA",    "Desarrollador"),
+    ("Maryerin Hernandez",                 "QA",    "Desarrollador"),
 ]
 
 
@@ -450,3 +455,17 @@ async def ensure_operational_schema(pool: Any) -> None:
             INSERT INTO dbo.sla_policies (modulo, issue_type, priority, nombre, sla_dias, alerta_pct, pausa_escalado)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
         """, modulo, issue_type, priority, nombre, sla_dias, alerta_pct, pausa)
+
+    await pool.execute("""
+        INSERT INTO dbo.capacidad_persona_pi (pi_id, persona_id, capacidad_horas)
+        SELECT pi.id, p.id, pi.horas_por_persona
+        FROM dbo.pi pi
+        CROSS JOIN dbo.personas p
+        WHERE p.tecnologia = 'QA'
+          AND pi.estado <> 'CERRADO'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM dbo.capacidad_persona_pi cpp
+              WHERE cpp.pi_id = pi.id AND cpp.persona_id = p.id
+          )
+    """)

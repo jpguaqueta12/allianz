@@ -172,21 +172,18 @@ function PaginationControls({
 // ── constantes planificación ───────────────────────────────────────────────────
 
 type Tech = 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
-type Fase = 'analisis' | 'desarrollo' | 'pruebas' | 'af'
+type Fase = 'desarrollo'
 
-const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | null }[] = [
+const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'QA' | null }[] = [
   { id: 'java',       label: 'JAVA',       color: 'text-blue-700',   headerBg: 'bg-blue-600',   techMatch: 'JAVA'  },
   { id: 'cobol',      label: 'COBOL',      color: 'text-emerald-700',headerBg: 'bg-emerald-600',techMatch: 'COBOL' },
   { id: 'dialogue',   label: 'DIALOGUE',   color: 'text-purple-700', headerBg: 'bg-purple-600', techMatch: null    },
   { id: 'parametria', label: 'PARAMETRÍA', color: 'text-orange-700', headerBg: 'bg-orange-500', techMatch: null    },
-  { id: 'qa',         label: 'PRUEBAS QA', color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: null    },
+  { id: 'qa',         label: 'PRUEBAS QA', color: 'text-rose-700',   headerBg: 'bg-rose-500',   techMatch: 'QA'    },
 ]
 
 const FASES: { id: Fase; label: string; techs: Tech[] }[] = [
-  { id: 'analisis',   label: 'ANÁLISIS',   techs: ['java','cobol','dialogue','parametria','qa'] },
-  { id: 'desarrollo', label: 'DESARROLLO', techs: ['java','cobol','dialogue','parametria'] },
-  { id: 'pruebas',    label: 'PRUEBAS',    techs: ['java','cobol','dialogue','parametria'] },
-  { id: 'af',         label: 'AF. RIESGO', techs: ['java','cobol','dialogue','parametria','qa'] },
+  { id: 'desarrollo', label: 'DESARROLLO', techs: ['java','cobol','dialogue','parametria','qa'] },
 ]
 
 function horaField(fase: Fase, tech: Tech): keyof PlanificacionData {
@@ -247,24 +244,23 @@ function itemToPlan(item: BacklogItem): PlanificacionData {
 }
 
 function newRow(): PlanificacionRow {
-  return { id: crypto.randomUUID(), responsable: null, perfil: 'java', fase: 'analisis', horas: null }
+  return { id: crypto.randomUUID(), responsable: null, perfil: 'java', fase: 'desarrollo', horas: null }
 }
 
 function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
   const rows: PlanificacionRow[] = []
   TECHS.forEach(tech => {
     const responsables = splitResponsables(plan[respField(tech.id)] as string | null)
-    FASES.filter(f => f.techs.includes(tech.id)).forEach(fase => {
-      const horas = (plan[horaField(fase.id, tech.id)] as number | null) ?? 0
-      if (horas <= 0) return
-      if (responsables.length === 0) {
-        rows.push({ id: crypto.randomUUID(), responsable: null, perfil: tech.id, fase: fase.id, horas })
-        return
-      }
-      const horasPorResponsable = horas / responsables.length
-      responsables.forEach(responsable => {
-        rows.push({ id: crypto.randomUUID(), responsable, perfil: tech.id, fase: fase.id, horas: horasPorResponsable })
-      })
+    const horas = (['analisis', 'desarrollo', 'pruebas', 'af'] as const)
+      .reduce((sum, fase) => sum + (((plan[`horas_${fase}_${tech.id}` as keyof PlanificacionData] as number | null) ?? 0)), 0)
+    if (horas <= 0) return
+    if (responsables.length === 0) {
+      rows.push({ id: crypto.randomUUID(), responsable: null, perfil: tech.id, fase: 'desarrollo', horas })
+      return
+    }
+    const horasPorResponsable = horas / responsables.length
+    responsables.forEach(responsable => {
+      rows.push({ id: crypto.randomUUID(), responsable, perfil: tech.id, fase: 'desarrollo', horas: horasPorResponsable })
     })
   })
   return rows
@@ -273,7 +269,7 @@ function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
 function itemToRows(item: BacklogItem): PlanificacionRow[] {
   const stored = item.planificacion_items ?? []
   if (stored.length) {
-    return stored.map(row => ({ ...row, id: crypto.randomUUID() }))
+    return stored.map(row => ({ ...row, fase: 'desarrollo' as const, id: crypto.randomUUID() }))
   }
   const legacy = legacyRowsFromPlan(itemToPlan(item))
   return legacy.length ? legacy : [newRow()]
@@ -289,14 +285,16 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
     const horas = row.horas ?? 0
     if (horas <= 0) return
     const key = horaField(row.fase, row.perfil)
-    data[key] = (((data[key] as number | null) ?? 0) + horas) as never
+    if (key in data) {
+      data[key] = (((data[key] as number | null) ?? 0) + horas) as never
+    }
     if (row.responsable && !responsablesPorPerfil[row.perfil].includes(row.responsable)) {
       responsablesPorPerfil[row.perfil].push(row.responsable)
     }
     data.planificacion_items?.push({
       responsable: row.responsable,
       perfil: row.perfil,
-      fase: row.fase,
+      fase: 'desarrollo',
       horas,
     })
   })
@@ -363,7 +361,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
       const next = { ...row, ...patch }
       const patchedPerfil = patch.perfil as Tech | undefined
       if (patchedPerfil && !FASES.some(f => f.id === next.fase && f.techs.includes(patchedPerfil))) {
-        next.fase = FASES.find(f => f.techs.includes(patchedPerfil))?.id ?? 'analisis'
+        next.fase = FASES.find(f => f.techs.includes(patchedPerfil))?.id ?? 'desarrollo'
       }
       return next
     }))
@@ -471,7 +469,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
             <div className="flex items-center justify-between gap-3 border-b border-corporate-line bg-slate-50 px-4 py-3">
               <div>
                 <p className="text-xs font-semibold text-corporate-ink">Asignaciones</p>
-                <p className="text-[11px] text-corporate-muted">Responsable, perfil, fase y horas por cada parte de la tarea.</p>
+                <p className="text-[11px] text-corporate-muted">Responsable, perfil y horas de desarrollo por cada parte de la tarea.</p>
               </div>
               <button
                 type="button"
@@ -488,7 +486,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                   <tr className="bg-slate-800 text-white">
                     <th className="px-3 py-2.5 text-left font-semibold">Responsable</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Perfil</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Fase</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Horas</th>
                     <th className="w-10 px-2 py-2.5" />
                   </tr>
@@ -522,17 +519,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                           </select>
                         </td>
                         <td className="border-b border-corporate-line px-3 py-2">
-                          <select
-                            value={row.fase}
-                            onChange={e => updateRow(row.id, { fase: e.target.value as Fase })}
-                            className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-                          >
-                            {FASES.filter(f => f.techs.includes(row.perfil)).map(f => (
-                              <option key={f.id} value={f.id}>{f.label}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="border-b border-corporate-line px-3 py-2">
                           <input
                             type="number"
                             min="0"
@@ -558,7 +544,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-800 text-white">
-                    <td colSpan={3} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
+                    <td colSpan={2} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
                     <td className="px-3 py-2.5 text-right text-sm font-bold">
                       {totalGeneral > 0 ? totalGeneral : <span className="text-slate-500 font-normal text-xs">—</span>}
                     </td>
@@ -981,9 +967,11 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   function handleSaved(updated: PlanificacionData) {
     if (!editing) return
-    const total = Object.entries(updated)
-      .filter(([k]) => k.startsWith('horas_'))
-      .reduce((s, [, v]) => s + ((v as number) ?? 0), 0)
+    const total = updated.planificacion_items?.length
+      ? updated.planificacion_items.reduce((s, row) => s + (row.horas ?? 0), 0)
+      : Object.entries(updated)
+        .filter(([k]) => k.startsWith('horas_'))
+        .reduce((s, [, v]) => s + ((v as number) ?? 0), 0)
     setItems(prev => prev.map(it => {
       if (it.id !== editing.id) return it
       const merged = { ...it, ...updated, total_horas: total || null, fecha_asignacion: updated.fecha_asignacion ?? null }

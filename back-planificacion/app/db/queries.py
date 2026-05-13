@@ -107,6 +107,13 @@ TECH_HORA_COLS = {
     "qa":         ["horas_analisis_qa","horas_af_qa"],
 }
 
+QA_TEAM_NAMES = (
+    "Carlos Villadiego",
+    "Rafael Alvarado",
+    "Laura Fernanda Pardo",
+    "Maryerin Hernandez",
+)
+
 
 def _split_responsables(value: str | None) -> list[str]:
     if not value:
@@ -257,6 +264,46 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
         item["estado"] = estado
         result.append(item)
     return result
+
+
+async def ensure_qa_team_capacity(pool: Any, pi_id: int) -> dict:
+    """Crea el equipo QA/Gestión y lo agrega a la capacidad del PI."""
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            horas_pi = await conn.fetchval(
+                "SELECT horas_por_persona FROM pi WHERE id = $1", pi_id
+            )
+            if horas_pi is None:
+                raise ValueError("PI no encontrado")
+
+            created = 0
+            attached = 0
+            for nombre in QA_TEAM_NAMES:
+                persona = await conn.fetchrow(
+                    "SELECT id FROM personas WHERE nombre=$1 AND tecnologia='QA'",
+                    nombre,
+                )
+                if not persona:
+                    persona = await conn.fetchrow("""
+                        INSERT INTO personas (nombre, tecnologia, rol, activo)
+                        VALUES ($1, 'QA', 'Desarrollador', 1);
+                        SELECT id FROM personas WHERE id = CAST(SCOPE_IDENTITY() AS int)
+                    """, nombre)
+                    created += 1
+
+                exists = await conn.fetchval(
+                    "SELECT COUNT(*) FROM capacidad_persona_pi WHERE pi_id=$1 AND persona_id=$2",
+                    pi_id,
+                    persona["id"],
+                )
+                if not exists:
+                    await conn.execute("""
+                        INSERT INTO capacidad_persona_pi (pi_id, persona_id, capacidad_horas)
+                        VALUES ($1, $2, $3)
+                    """, pi_id, persona["id"], int(horas_pi))
+                    attached += 1
+
+    return {"creadas": created, "agregadas": attached, "horas_por_persona": int(horas_pi)}
 
 
 async def get_resumen_proyectos(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_id: int | None = None) -> list[dict]:
@@ -1455,7 +1502,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
 
     rows = await pool.fetch(f"""
         SELECT
-            id, ticket_key, summary, assignee, fecha_asignacion,
+            id, ticket_key, summary, assignee, assigned_team, fecha_asignacion,
             horas_analisis_java::float,    horas_desarrollo_java::float,
             horas_pruebas_java::float,     horas_af_java::float,
             horas_analisis_cobol::float,   horas_desarrollo_cobol::float,
@@ -1511,6 +1558,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             "ticket_key": row["ticket_key"],
             "summary": row["summary"],
             "assignee": row["assignee"],
+            "equipo": row["assigned_team"],
             "fecha_asignacion": fecha_asig.isoformat(),
             "fecha_fin_desarrollo": fecha_fin_dev.isoformat(),
             "fecha_fin_qa": fecha_fin_qa_iso,

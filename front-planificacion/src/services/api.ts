@@ -226,7 +226,7 @@ export async function getBacklog(modulo: string, piId?: number | null) {
 }
 
 export type PlanificacionPerfil = 'java' | 'cobol' | 'dialogue' | 'parametria' | 'qa'
-export type PlanificacionFase = 'analisis' | 'desarrollo' | 'pruebas' | 'af'
+export type PlanificacionFase = 'desarrollo'
 
 export interface PlanificacionItem {
   responsable: string | null
@@ -266,7 +266,7 @@ export interface PlanificacionData {
 export interface ResponsableDisponible {
   id: number
   nombre: string
-  tecnologia: 'JAVA' | 'COBOL'
+  tecnologia: 'JAVA' | 'COBOL' | 'QA'
   rol: string
   capacidad_horas: number
   horas_asignadas: number

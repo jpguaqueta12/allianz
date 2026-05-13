@@ -72,7 +72,8 @@ const estadoColor: Record<string, string> = {
 }
 
 type VistaCapacidad = 'riesgo' | 'tecnologia'
-type FiltroCapacidad = 'TODOS' | 'SOBRECARGADO' | 'DISPONIBLE' | 'OCUPADO' | 'SIN_CAPACIDAD' | 'JAVA' | 'COBOL'
+type TecnologiaCapacidad = 'JAVA' | 'COBOL' | 'QA'
+type FiltroCapacidad = 'TODOS' | 'SOBRECARGADO' | 'DISPONIBLE' | 'OCUPADO' | 'SIN_CAPACIDAD' | TecnologiaCapacidad
 
 const FILTERS: { id: FiltroCapacidad; label: string }[] = [
   { id: 'TODOS', label: 'Todos' },
@@ -82,6 +83,7 @@ const FILTERS: { id: FiltroCapacidad; label: string }[] = [
   { id: 'SIN_CAPACIDAD', label: 'Sin capacidad' },
   { id: 'JAVA', label: 'JAVA' },
   { id: 'COBOL', label: 'COBOL' },
+  { id: 'QA', label: 'Gestión y calidad' },
 ]
 
 const riskRank: Record<string, number> = {
@@ -121,11 +123,11 @@ function AddPersonaForm({
   horasPorPersona: number
   onDone: () => void
   onCancel: () => void
-  onSubmit: (nombre: string, apellidos: string, tecnologia: string) => Promise<void>
+  onSubmit: (nombre: string, apellidos: string, tecnologia: TecnologiaCapacidad) => Promise<void>
 }) {
   const [nombre, setNombre] = useState('')
   const [apellidos, setApellidos] = useState('')
-  const [tecnologia, setTecnologia] = useState<'JAVA' | 'COBOL'>('JAVA')
+  const [tecnologia, setTecnologia] = useState<TecnologiaCapacidad>('JAVA')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -176,10 +178,11 @@ function AddPersonaForm({
           <select
             className="rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink w-24"
             value={tecnologia}
-            onChange={e => setTecnologia(e.target.value as 'JAVA' | 'COBOL')}
+            onChange={e => setTecnologia(e.target.value as TecnologiaCapacidad)}
           >
             <option value="JAVA">JAVA</option>
             <option value="COBOL">COBOL</option>
+            <option value="QA">Gestión y calidad</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -372,7 +375,7 @@ function CapacityTable({
               return (
                 <tr key={p.id} className="hover:bg-corporate-surface">
                   <td className="whitespace-nowrap font-medium text-corporate-ink">{p.nombre}</td>
-                  <td><StatusBadge tone={p.tecnologia === 'JAVA' ? 'blue' : 'green'}>{p.tecnologia}</StatusBadge></td>
+                  <td><StatusBadge tone={p.tecnologia === 'JAVA' ? 'blue' : p.tecnologia === 'COBOL' ? 'green' : 'purple'}>{p.tecnologia}</StatusBadge></td>
                   <td className="text-right font-mono">
                     <span>{formatHours(p.capacidad)}</span>
                     {capDiffersFromPi && (
@@ -442,16 +445,16 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
   const [search, setSearch] = useState('')
 
   const filtered = sortByRisk(personas).filter(p => {
-    if (filtro === 'JAVA' && p.tecnologia !== 'JAVA') return false
-    if (filtro === 'COBOL' && p.tecnologia !== 'COBOL') return false
+    if ((filtro === 'JAVA' || filtro === 'COBOL' || filtro === 'QA') && p.tecnologia !== filtro) return false
     if (filtro === 'SIN_CAPACIDAD' && p.estado !== 'SIN CAPACIDAD') return false
-    if (filtro !== 'TODOS' && filtro !== 'JAVA' && filtro !== 'COBOL' && filtro !== 'SIN_CAPACIDAD' && p.estado !== filtro) return false
+    if (filtro !== 'TODOS' && filtro !== 'JAVA' && filtro !== 'COBOL' && filtro !== 'QA' && filtro !== 'SIN_CAPACIDAD' && p.estado !== filtro) return false
     const q = search.trim().toLowerCase()
     if (!q) return true
     return `${p.nombre} ${p.tecnologia} ${p.estado}`.toLowerCase().includes(q)
   })
   const cobol = filtered.filter(p => p.tecnologia === 'COBOL')
   const java  = filtered.filter(p => p.tecnologia === 'JAVA')
+  const qa    = filtered.filter(p => p.tecnologia === 'QA')
 
   async function handleConfirmRemove() {
     if (!confirm || !piId || !onRefresh) return
@@ -465,7 +468,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
     }
   }
 
-  async function handleCrear(nombre: string, apellidos: string, tecnologia: string) {
+  async function handleCrear(nombre: string, apellidos: string, tecnologia: TecnologiaCapacidad) {
     if (!piId) throw new Error('Sin PI activo')
     await crearPersonaEnCapacidad(piId, { nombre, apellidos, tecnologia })
   }
@@ -601,7 +604,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
           onAdd={() => setShowForm(true)}
         />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-3">
           <CapacityTable
             title="Equipo COBOL"
             description={`${cobol.length} persona${cobol.length !== 1 ? 's' : ''}`}
@@ -616,6 +619,16 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
             title="Equipo JAVA"
             description={`${java.length} persona${java.length !== 1 ? 's' : ''}`}
             rows={java}
+            piId={piId}
+            onRefresh={onRefresh}
+            horasPorPersona={horasPorPersona}
+            onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
+            onAdd={() => setShowForm(true)}
+          />
+          <CapacityTable
+            title="Gestión y calidad"
+            description={`${qa.length} persona${qa.length !== 1 ? 's' : ''}`}
+            rows={qa}
             piId={piId}
             onRefresh={onRefresh}
             horasPorPersona={horasPorPersona}

@@ -202,11 +202,12 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
       ) : (
         <div className="overflow-hidden rounded-xl border border-corporate-line shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] table-auto text-xs border-collapse">
+            <table className="w-full min-w-[940px] table-auto text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-800 text-white">
                   <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                   <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
+                  <th className="min-w-[130px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo</th>
                   <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Inicio</th>
                   <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fin Desarrollo</th>
                   <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta Dev</th>
@@ -234,6 +235,11 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                       <td className="px-3 py-2 border-r border-corporate-line/30">
                         <span className="line-clamp-2 text-corporate-ink leading-snug" title={item.summary}>
                           {item.summary}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 border-r border-corporate-line/30">
+                        <span className="line-clamp-2 text-corporate-muted leading-snug" title={item.equipo ?? ''}>
+                          {item.equipo ?? '—'}
                         </span>
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
