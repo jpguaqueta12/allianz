@@ -41,24 +41,24 @@ function addCalendarDays(startIso: string, days: number): string {
 function calcularFechaFin(item: BacklogItem, piActivo?: PiInfo | null): string | null {
   if (!item.fecha_asignacion) return null
 
-  let java = 0, cobol = 0, soporte = 0
+  let java = 0, cobol = 0, calidad = 0
 
   if (item.planificacion_items?.length) {
     for (const p of item.planificacion_items) {
       const h = p.horas ?? 0
       if (p.perfil === 'java')       java  += h
       else if (p.perfil === 'cobol') cobol += h
-      else if (p.perfil === 'gestion' || p.perfil === 'calidad') soporte += h
+      else if (p.perfil === 'calidad') calidad += h
     }
   } else {
     java  = (item.horas_analisis_java  ?? 0) + (item.horas_desarrollo_java  ?? 0)
           + (item.horas_pruebas_java   ?? 0) + (item.horas_af_java          ?? 0)
     cobol = (item.horas_analisis_cobol ?? 0) + (item.horas_desarrollo_cobol ?? 0)
           + (item.horas_pruebas_cobol  ?? 0) + (item.horas_af_cobol         ?? 0)
-    soporte = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
+    calidad = (item.horas_analisis_qa ?? 0) + (item.horas_af_qa ?? 0)
   }
 
-  const totalHoras = Math.max(java, cobol) + soporte
+  const totalHoras = Math.max(java, cobol) + calidad
   if (totalHoras <= 0) return null
 
   const horasPorDia   = piActivo?.horas_por_dia ?? 8

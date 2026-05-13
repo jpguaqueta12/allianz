@@ -657,7 +657,7 @@ def _horas_por_perfil_de_data(data: dict) -> tuple[float, float, float]:
             p = it.get("perfil", "")
             if p == "java":   java  += h
             elif p == "cobol": cobol += h
-            elif p in ("calidad", "gestion", "qa"): qa += h
+            elif p in ("calidad", "qa"): qa += h
     return java, cobol, qa
 
 
@@ -1610,7 +1610,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             cobol = sum(i["horas"] for i in items if i["perfil"] == "cobol")
             gestion = sum(i["horas"] for i in items if i["perfil"] == "gestion")
             calidad = sum(i["horas"] for i in items if i["perfil"] == "calidad")
-            qa = gestion + calidad
+            qa = calidad
         else:
             gestion = 0
             calidad = 0

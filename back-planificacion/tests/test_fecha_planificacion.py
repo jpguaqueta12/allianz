@@ -24,12 +24,25 @@ class FechaPlanificacionTests(unittest.TestCase):
                 "planificacion_items": [
                     {"responsable": "Ana", "perfil": "java", "fase": "desarrollo", "horas": 16},
                     {"responsable": "Luis", "perfil": "cobol", "fase": "desarrollo", "horas": 8},
-                    {"responsable": "QA", "perfil": "qa", "fase": "af", "horas": 8},
+                    {"responsable": "Gestion", "perfil": "gestion", "fase": "desarrollo", "horas": 40},
+                    {"responsable": "Calidad", "perfil": "calidad", "fase": "desarrollo", "horas": 8},
                 ]
             }),
         }
 
         self.assertEqual(_horas_por_perfil_de_data(data), (16, 8, 8))
+
+    def test_horas_por_perfil_normaliza_qa_como_calidad(self):
+        data = {
+            "extra": json.dumps({
+                "planificacion_items": [
+                    {"responsable": "QA", "perfil": "qa", "fase": "af", "horas": 8},
+                    {"responsable": "Gestion", "perfil": "dialogue", "fase": "desarrollo", "horas": 40},
+                ]
+            }),
+        }
+
+        self.assertEqual(_horas_por_perfil_de_data(data), (0, 0, 8))
 
     def test_fecha_fin_aplica_factor_y_dias_laborables(self):
         fecha_fin = _calcular_fecha_fin(
