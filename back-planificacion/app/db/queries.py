@@ -586,6 +586,14 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             )
         item["escalados"] = _json_load(item.get("escalados")) or []
 
+        # Backward compat: tickets que aún no tienen la columna escalados poblada
+        # pero sí tienen fecha_escalado en la BD, se reconstruye el array desde los campos legacy.
+        if not item["escalados"] and item.get("fecha_escalado"):
+            item["escalados"] = [{
+                "fecha_escalado": item["fecha_escalado"],
+                "fecha_reinicio": item.get("fecha_reinicio"),
+            }]
+
         # Compute fecha_finalizacion_inicial (base without escalations)
         fecha_fin_inicial = _as_date(item.get("fecha_finalizacion_inicial"))
         if not fecha_fin_inicial:
@@ -603,7 +611,6 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             item["fecha_finalizacion"] = fecha_fin_computed.isoformat() if fecha_fin_computed else None
             last_esc = escalados_list[-1]
             if not last_esc.get("fecha_reinicio"):
-                # Actively escalated: compute ETC from last escalado to projected fin
                 fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_inicial, escalados_list[:-1])
                 stored_etc = item.get("etc") or 0
                 computed_etc = _calendar_days_between(_as_date(last_esc["fecha_escalado"]), fin_before_last)
@@ -614,6 +621,7 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             item["fecha_reinicio"] = last_esc.get("fecha_reinicio")
         else:
             item["etc"] = 0
+            # Preserve DB values (no escalation set, no override needed)
             item["fecha_escalado"] = None
             item["fecha_reinicio"] = None
         result.append(item)
@@ -751,7 +759,7 @@ async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dic
     )
     # recalcular fecha_finalizacion con configuración del PI y escalados
     fechas = await pool.fetchrow(
-        f"SELECT fecha_asignacion, escalados FROM {table} WHERE id = $1",
+        f"SELECT fecha_asignacion, escalados, fecha_escalado, fecha_reinicio FROM {table} WHERE id = $1",
         ticket_id,
     )
     horas_dia, festivos = await _pi_config_para_ticket(pool, table, ticket_id)
@@ -759,6 +767,8 @@ async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dic
     fecha_fin_base = _calcular_fecha_fin(fechas["fecha_asignacion"] if fechas else None, java, cobol, qa, horas_dia, festivos)
     await pool.execute(f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2", fecha_fin_base, ticket_id)
     escalados_list = _json_load(fechas.get("escalados") if fechas else None) or []
+    if not escalados_list and fechas and fechas.get("fecha_escalado"):
+        escalados_list = [{"fecha_escalado": str(fechas["fecha_escalado"]), "fecha_reinicio": str(fechas["fecha_reinicio"]) if fechas.get("fecha_reinicio") else None}]
     fecha_fin = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list)
     if escalados_list and not escalados_list[-1].get("fecha_reinicio"):
         fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list[:-1])
@@ -778,7 +788,7 @@ async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha:
     row = await pool.fetchrow(f"""
         SELECT horas_analisis_java, horas_desarrollo_java, horas_pruebas_java, horas_af_java,
                horas_analisis_cobol, horas_desarrollo_cobol, horas_pruebas_cobol, horas_af_cobol,
-               horas_analisis_qa, horas_af_qa, extra, escalados
+               horas_analisis_qa, horas_af_qa, extra, escalados, fecha_escalado, fecha_reinicio
         FROM {table} WHERE id = $1
     """, ticket_id)
     if row:
@@ -788,6 +798,8 @@ async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha:
         fecha_fin_base = _calcular_fecha_fin(fecha_date, java, cobol, qa, horas_dia, festivos)
         await pool.execute(f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2", fecha_fin_base, ticket_id)
         escalados_list = _json_load(row_dict.get("escalados")) or []
+        if not escalados_list and row_dict.get("fecha_escalado"):
+            escalados_list = [{"fecha_escalado": str(row_dict["fecha_escalado"]), "fecha_reinicio": str(row_dict["fecha_reinicio"]) if row_dict.get("fecha_reinicio") else None}]
         fecha_fin = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list)
         if escalados_list and not escalados_list[-1].get("fecha_reinicio"):
             fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list[:-1])
