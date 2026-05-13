@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 type Role = 'superuser' | 'user' | null
-export const SESSION_TTL_MS = 10 * 60 * 1000
+export const SESSION_TTL_MS = 60 * 60 * 1000
 
 interface AuthState {
   token: string | null
