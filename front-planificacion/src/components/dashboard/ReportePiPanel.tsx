@@ -25,6 +25,7 @@ type DrillFilter =
   | { type: 'sin_asignacion'; label: string }
   | { type: 'sin_planificacion'; label: string }
   | { type: 'sin_finalizacion'; label: string }
+  | { type: 'siguiente_pi'; label: string }
   | { type: 'status'; label: string; value: string }
   | { type: 'issue_type'; label: string; value: string }
   | { type: 'technology'; label: string; value: string }
@@ -355,6 +356,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
     const sinAsignacion = items.filter(item => !item.fecha_asignacion)
     const sinPlanificacion = items.filter(item => (item.total_horas ?? 0) <= 0)
     const sinFinalizacion = items.filter(item => (item.total_horas ?? 0) > 0 && !item.fecha_finalizacion)
+    const siguientePi = items.filter(item => item.prn === 'Debe pasar al siguiente PI')
     const conEtc = items.filter(item => (item.etc ?? 0) > 0)
     const capacidadTotal = capacidad.reduce((sum, p) => sum + (p.capacidad ?? 0), 0)
     const cargaTotal = capacidad.reduce((sum, p) => sum + (p.carga_estimada ?? 0), 0)
@@ -375,7 +377,8 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
       - (total ? Math.round((escaladosActivos.length / total) * 20) : 0)
       - (total ? Math.round((sinAsignacion.length / total) * 15) : 0)
       - (total ? Math.round((sinPlanificacion.length / total) * 15) : 0)
-      - (capacidadRestante < 0 ? 15 : 0),
+      - (capacidadRestante < 0 ? 15 : 0)
+      - (total ? Math.round((siguientePi.length / total) * 10) : 0),
     ))
     const recomendaciones = [
       vencidos.length ? `Priorizar ${vencidos.length} ticket${vencidos.length !== 1 ? 's' : ''} vencido${vencidos.length !== 1 ? 's' : ''}.` : null,
@@ -383,6 +386,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
       sinAsignacion.length ? `Asignar fecha de inicio a ${sinAsignacion.length} ticket${sinAsignacion.length !== 1 ? 's' : ''}.` : null,
       sinPlanificacion.length ? `Completar estimación de ${sinPlanificacion.length} ticket${sinPlanificacion.length !== 1 ? 's' : ''} sin planificación.` : null,
       capacidadRestante < 0 ? `Resolver déficit de ${Math.round(Math.abs(capacidadRestante))}h frente a la capacidad disponible.` : null,
+      siguientePi.length ? `Gestionar ${siguientePi.length} ticket${siguientePi.length !== 1 ? 's' : ''} que supera${siguientePi.length !== 1 ? 'n' : ''} la fecha fin del PI.` : null,
     ].filter(Boolean) as string[]
 
     return {
@@ -406,6 +410,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
         .filter(item => item.value > 0)
         .sort((a, b) => b.value - a.value),
       ocupacionGlobal: capacidadTotal > 0 ? Math.round((cargaTotal / capacidadTotal) * 100) : 0,
+      siguientePi,
       score,
       recomendaciones,
     }
@@ -419,6 +424,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
     if (filter.type === 'sin_asignacion') return report.sinAsignacion
     if (filter.type === 'sin_planificacion') return report.sinPlanificacion
     if (filter.type === 'sin_finalizacion') return report.sinFinalizacion
+    if (filter.type === 'siguiente_pi') return report.siguientePi
     if (filter.type === 'status') return items.filter(item => (item.status || 'Sin dato') === filter.value)
     if (filter.type === 'issue_type') return items.filter(item => (item.issue_type || 'Sin dato') === filter.value)
     if (filter.type === 'technology') return items.filter(item => hasTechnology(item, filter.value))
@@ -432,6 +438,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
     `Vencidos: ${report.vencidos.length}`,
     `Escalados activos: ${report.escaladosActivos.length}`,
     `Finalizados: ${report.finalizados.length}`,
+    `Siguiente PI: ${report.siguientePi.length}`,
     `Horas estimadas: ${Math.round(report.horasTotal)}h`,
     `Carga equipo: ${Math.round(report.cargaTotal)}h de ${Math.round(report.capacidadTotal)}h (${report.ocupacionGlobal}%)`,
     report.recomendaciones.length ? `Acciones: ${report.recomendaciones.join(' ')}` : 'Acciones: sin alertas críticas.',
@@ -494,6 +501,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
         <KpiCard label="Carga equipo" value={`${Math.round(report.cargaTotal)}h`} icon={Gauge} tone={report.ocupacionGlobal > 100 ? 'red' : report.ocupacionGlobal > 80 ? 'amber' : 'green'} detail={`${report.ocupacionGlobal}% de ${Math.round(report.capacidadTotal)}h`} />
         <KpiAction label="Sin asignación" value={report.sinAsignacion.length} icon={AlertTriangle} tone={report.sinAsignacion.length ? 'amber' : 'neutral'} detail="Sin fecha inicio" onClick={() => setFilter({ type: 'sin_asignacion', label: 'Sin fecha de asignación' })} />
         <KpiAction label="Sin planificación" value={report.sinPlanificacion.length} icon={PieChart} tone={report.sinPlanificacion.length ? 'amber' : 'neutral'} detail="Sin horas estimadas" onClick={() => setFilter({ type: 'sin_planificacion', label: 'Sin planificación' })} />
+        <KpiAction label="Siguiente PI" value={report.siguientePi.length} icon={Clock3} tone={report.siguientePi.length ? 'red' : 'neutral'} detail="Superan fecha fin del PI" onClick={() => setFilter({ type: 'siguiente_pi', label: 'Pasan al siguiente PI' })} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
@@ -544,6 +552,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
         <RiskList title="Tickets más vencidos" rows={report.vencidos} empty="No hay tickets vencidos sin entrega." onOpen={() => setFilter({ type: 'vencidos', label: 'Tickets vencidos' })} />
         <RiskList title="Escalados activos" rows={report.escaladosActivos} empty="No hay tickets escalados activos." onOpen={() => setFilter({ type: 'escalados', label: 'Escalados activos' })} />
         <RiskList title="Sin fecha de finalización" rows={report.sinFinalizacion} empty="Todos los tickets planificados tienen fecha final." onOpen={() => setFilter({ type: 'sin_finalizacion', label: 'Sin fecha de finalización' })} />
+        <RiskList title="Pasan al siguiente PI" rows={report.siguientePi} empty="Todos los tickets caben dentro del PI actual." onOpen={() => setFilter({ type: 'siguiente_pi', label: 'Pasan al siguiente PI' })} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-corporate-line bg-white px-3 py-2">

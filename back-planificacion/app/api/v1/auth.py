@@ -26,23 +26,23 @@ class TokenResponse(BaseModel):
 
 @router.post("/auth/login", response_model=TokenResponse, tags=["auth"])
 async def login(body: LoginRequest) -> TokenResponse:
-    """Autenticación. Acepta superusuario y usuario normal."""
+    """Autenticación. Verifica credenciales contra la tabla dbo.usuarios."""
+    from app.db.connection import get_pool
     s = get_settings()
 
-    # Determinar qué usuario es y verificar contraseña
-    if body.username == s.super_user:
-        hash_to_check = s.super_password_hash
-        role = "superuser"
-    elif body.username == s.normal_user:
-        hash_to_check = s.normal_password_hash
-        role = "user"
-    else:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT password_hash, rol FROM dbo.usuarios WHERE username=$1 AND activo=1",
+        body.username,
+    )
+
+    if not row:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
         )
 
-    if not bcrypt.checkpw(body.password.encode("utf-8"), hash_to_check.encode("utf-8")):
+    if not bcrypt.checkpw(body.password.encode("utf-8"), row["password_hash"].encode("utf-8")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales incorrectas",
@@ -50,7 +50,7 @@ async def login(body: LoginRequest) -> TokenResponse:
 
     expire = datetime.now(timezone.utc) + timedelta(minutes=s.jwt_expire_minutes)
     token = jwt.encode(
-        {"sub": role, "exp": expire},
+        {"sub": row["rol"], "exp": expire},
         s.secret_key,
         algorithm=s.jwt_algorithm,
     )

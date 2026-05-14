@@ -3,6 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 
+def _get_settings_lazy():
+    from app.config import get_settings
+    return get_settings()
+
+
 SCHEMA_STATEMENTS = [
     """
     IF OBJECT_ID('dbo.pi', 'U') IS NULL
@@ -333,6 +338,20 @@ SCHEMA_STATEMENTS = [
     "IF COL_LENGTH('dbo.backlog_mejora_continua', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD fecha_finalizacion_inicial DATE NULL;",
     "IF COL_LENGTH('dbo.backlog_fabrica', 'escalados') IS NULL ALTER TABLE dbo.backlog_fabrica ADD escalados NVARCHAR(MAX) NULL;",
     "IF COL_LENGTH('dbo.backlog_fabrica', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_fabrica ADD fecha_finalizacion_inicial DATE NULL;",
+    """
+    IF OBJECT_ID('dbo.usuarios', 'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.usuarios (
+            id       BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            username NVARCHAR(80)  NOT NULL UNIQUE,
+            nombre   NVARCHAR(120) NOT NULL,
+            rol      NVARCHAR(20)  NOT NULL CONSTRAINT DF_usr_rol DEFAULT 'user',
+            password_hash NVARCHAR(256) NOT NULL,
+            activo   BIT NOT NULL CONSTRAINT DF_usr_activo DEFAULT 1,
+            created_at DATETIME2 NOT NULL CONSTRAINT DF_usr_created DEFAULT SYSUTCDATETIME()
+        );
+    END
+    """,
 ]
 
 
@@ -485,3 +504,16 @@ async def ensure_operational_schema(pool: Any) -> None:
               WHERE cpp.pi_id = pi.id AND cpp.persona_id = p.id
           )
     """)
+
+    s = _get_settings_lazy()
+    for username, nombre, rol, password_hash in [
+        (s.super_user,   "Administrador Principal",  "superuser", s.super_password_hash),
+        (s.normal_user,  "Planificador",              "user",      s.normal_password_hash),
+        ("admin2",       "Administrador 2",           "superuser", "$2b$12$ved5ZgQ97SXzGTkv.hfHZ.8L3JA6/UZwonjBWKUJJYeo05tY12H7S"),
+        ("admin3",       "Administrador 3",           "superuser", "$2b$12$uRclEOveQS3qFC.AuZ0N9uoXA9RLUNy14n/GID2BJeHfDa6OZ8nm2"),
+    ]:
+        await pool.execute("""
+            IF NOT EXISTS (SELECT 1 FROM dbo.usuarios WHERE username=$1)
+            INSERT INTO dbo.usuarios (username, nombre, rol, password_hash)
+            VALUES ($1, $2, $3, $4)
+        """, username, nombre, rol, password_hash)

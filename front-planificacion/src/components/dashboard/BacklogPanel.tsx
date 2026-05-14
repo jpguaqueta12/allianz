@@ -117,7 +117,6 @@ function calcularEtc(item: BacklogItem, piActivo?: PiInfo | null): number {
 }
 
 function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
-  if (item.prn) return item.prn
   const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
   if (!fin || !piActivo?.fecha_fin) return 'Normal'
   return fin > piActivo.fecha_fin ? 'Debe pasar al siguiente PI' : 'Normal'

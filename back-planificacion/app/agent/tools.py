@@ -338,6 +338,26 @@ async def consultar_sla(modulo: Modulo = "MEJORA_CONTINUA", estado: Optional[str
 
 
 @tool
+async def consultar_siguiente_pi(modulo: Modulo = "MEJORA_CONTINUA", limite: int = 50) -> str:
+    """Lista tickets cuya fecha_finalizacion supera la fecha_fin del PI activo (PRN = Debe pasar al siguiente PI)."""
+    mod = _normalize_modulo(modulo)
+    modules = ["MEJORA_CONTINUA", "FABRICA"] if mod == "TODOS" else [mod]
+    pool = get_pool()
+    safe_limit = max(1, min(limite or 50, 100))
+    result: dict[str, dict] = {}
+
+    for module in modules:
+        backlog = await _backlog_for_modulo(pool, module)
+        tickets = [_compact_backlog_item(i) for i in backlog if i.get("prn") == "Debe pasar al siguiente PI"]
+        result[module] = {
+            "total": len(tickets),
+            "tickets": tickets[:safe_limit],
+        }
+
+    return _fmt(result)
+
+
+@tool
 async def consultar_resumen_operativo(modulo: Modulo = "TODOS") -> str:
     """Resume la realidad operativa actual: PI activo, conteos por estado, planificados, fechas, entregas, escalamientos y alertas."""
     mod = _normalize_modulo(modulo)
@@ -370,6 +390,7 @@ async def consultar_resumen_operativo(modulo: Modulo = "TODOS") -> str:
             "sin_fecha_finalizacion_y_con_horas": sum(
                 1 for i in backlog if float(i.get("total_horas") or 0) > 0 and not i.get("fecha_finalizacion")
             ),
+            "siguiente_pi": sum(1 for i in backlog if i.get("prn") == "Debe pasar al siguiente PI"),
             "alertas": {
                 "total": len(alertas),
                 "rojas": sum(1 for a in alertas if a.get("alerta_desarrollo") == "roja" or a.get("alerta_qa") == "roja"),
@@ -394,5 +415,6 @@ ALL_TOOLS = [
     consultar_alertas,
     consultar_vencidos,
     consultar_sla,
+    consultar_siguiente_pi,
     consultar_resumen_operativo,
 ]
