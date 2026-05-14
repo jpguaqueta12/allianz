@@ -1583,10 +1583,10 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           <button
             onClick={() => exportExcel(filtered, modulo, piActivo)}
             disabled={filtered.length === 0}
-            className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors disabled:opacity-40"
+            className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40"
             title={`Exportar ${filtered.length} tickets a Excel`}
           >
-            <Download size={12} /> Excel
+            <Download size={13} /> Exportar Excel
           </button>
           <button onClick={load} disabled={loading}
             className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors">
