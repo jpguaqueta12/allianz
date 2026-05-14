@@ -1070,6 +1070,7 @@ function EscaladosCell({
 
   const [rows, setRows] = useState<Row[]>(() => toRows(itemEscalados))
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const savingRef = useRef(false)
 
   useEffect(() => {
@@ -1080,17 +1081,40 @@ function EscaladosCell({
         ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
         : []
     setRows(toRows(esc))
+    setError(null)
   }, [item.escalados, item.fecha_escalado, item.fecha_reinicio])
 
   function save(currentRows: Row[]) {
-    const escalados = currentRows
-      .filter(r => r.fe.trim() && isValidDate(r.fe.trim()))
-      .map(r => ({ fecha_escalado: r.fe.trim(), fecha_reinicio: r.fr.trim() && isValidDate(r.fr.trim()) ? r.fr.trim() : null }))
+    const filledRows = currentRows
+      .map(r => ({ fe: r.fe.trim(), fr: r.fr.trim() }))
+      .filter(r => r.fe || r.fr)
+
+    for (const [idx, row] of filledRows.entries()) {
+      if (!row.fe || !isValidDate(row.fe)) {
+        setError(`Escalado ${idx + 1}: fecha inválida`)
+        return
+      }
+      if (row.fr && !isValidDate(row.fr)) {
+        setError(`Reinicio ${idx + 1}: fecha inválida`)
+        return
+      }
+      if (idx < filledRows.length - 1 && !row.fr) {
+        setError(`Escalado ${idx + 1}: falta reinicio`)
+        return
+      }
+    }
+
+    const escalados = filledRows.map(r => ({
+      fecha_escalado: r.fe,
+      fecha_reinicio: r.fr || null,
+    }))
 
     savingRef.current = true
     setSaving(true)
+    setError(null)
     updateEscalamiento(modulo, item.id, { escalados })
       .then(res => {
+        setRows(toRows(res.escalados))
         onSaved({
           escalados: res.escalados,
           fecha_escalado: res.fecha_escalado,
@@ -1102,6 +1126,7 @@ function EscaladosCell({
         })
       })
       .catch(() => {
+        setError('No se pudo guardar')
         const esc = (item.escalados ?? []).length > 0
           ? item.escalados
           : item.fecha_escalado
@@ -1125,6 +1150,7 @@ function EscaladosCell({
 
   function addRow() {
     setRows(prev => [...prev, { fe: '', fr: '' }])
+    setError(null)
   }
 
   function removeRow(idx: number) {
@@ -1177,6 +1203,7 @@ function EscaladosCell({
         )}
         {saving && <Loader2 size={10} className="animate-spin text-allianz-blue" />}
       </div>
+      {error && <p className="max-w-[210px] text-[10px] leading-tight text-red-600">{error}</p>}
     </div>
   )
 }
