@@ -109,6 +109,7 @@ export interface BacklogItem {
   fecha_entrega: string | null
   etc: number | null
   escalados: { fecha_escalado: string; fecha_reinicio: string | null }[]
+  prn: string | null
 }
 
 export interface IncidenteItem {

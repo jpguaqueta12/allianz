@@ -116,6 +116,13 @@ function calcularEtc(item: BacklogItem, piActivo?: PiInfo | null): number {
   return calendarDaysBetween(last.fecha_escalado, fin)
 }
 
+function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
+  if (item.prn) return item.prn
+  const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
+  if (!fin || !piActivo?.fecha_fin) return 'Normal'
+  return fin > piActivo.fecha_fin ? 'Debe pasar al siguiente PI' : 'Normal'
+}
+
 // ── colores badges ─────────────────────────────────────────────────────────────
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -1465,6 +1472,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Inicial</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Finalización</th>
+                <th className="min-w-[90px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">PRN</th>
                 <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
                 <th className="min-w-[70px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
@@ -1524,6 +1532,14 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         return fin
                           ? <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CalendarDays size={11} className="shrink-0" />{fin}</span>
                           : <span className="text-corporate-muted text-xs">—</span>
+                      })()}
+                    </td>
+                    <td className="px-2 py-2 text-center border-r border-corporate-line/30">
+                      {(() => {
+                        const prn = calcularPrn(item, piActivo)
+                        return prn === 'Debe pasar al siguiente PI'
+                          ? <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 leading-tight">Sig. PI</span>
+                          : <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 leading-tight">Normal</span>
                       })()}
                     </td>
                     <td className="px-1 py-1 border-r border-corporate-line/30">

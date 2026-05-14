@@ -574,7 +574,9 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
         WHERE pi_id = $1
         ORDER BY ticket_key NULLS LAST, summary
     """, pi_id)
-    horas_dia = await pool.fetchval("SELECT horas_por_dia FROM pi WHERE id = $1", pi_id) or 8
+    pi_row = await pool.fetchrow("SELECT horas_por_dia, fecha_fin FROM pi WHERE id = $1", pi_id)
+    horas_dia = (pi_row["horas_por_dia"] if pi_row else None) or 8
+    pi_fecha_fin = _as_date(pi_row["fecha_fin"]) if pi_row else None
     festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
     festivos = {f["fecha"] for f in festivos_rows}
     result = []
@@ -626,6 +628,14 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             # Preserve DB values (no escalation set, no override needed)
             item["fecha_escalado"] = None
             item["fecha_reinicio"] = None
+
+        # PRN: Punto de No Retorno
+        fecha_fin_item = _as_date(item.get("fecha_finalizacion"))
+        if fecha_fin_item and pi_fecha_fin and fecha_fin_item > pi_fecha_fin:
+            item["prn"] = "Debe pasar al siguiente PI"
+        else:
+            item["prn"] = "Normal"
+
         result.append(item)
     return result
 
