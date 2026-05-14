@@ -113,8 +113,10 @@ def _json_load(value):
 
 
 def _as_date(value):
-    if isinstance(value, date) or value is None:
+    if isinstance(value, date):
         return value
+    if not value:
+        return None
     return date.fromisoformat(value)
 
 
