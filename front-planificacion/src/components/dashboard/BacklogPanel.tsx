@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Loader2, AlertCircle, RefreshCw, ClipboardEdit,
-  X, Save, CheckCircle2, Trash2, Plus, Eye, CalendarDays,
+  X, Save, CheckCircle2, Trash2, Plus, Eye, CalendarDays, Download,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo } from '../../types'
 import {
@@ -120,6 +121,142 @@ function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
   const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
   if (!fin || !piActivo?.fecha_fin) return 'Normal'
   return fin > piActivo.fecha_fin ? 'Debe pasar al siguiente PI' : 'Normal'
+}
+
+// ── Export Excel ──────────────────────────────────────────────────────────────
+
+function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | null) {
+  const today = new Date().toISOString().split('T')[0]
+
+  const HEADERS = [
+    'Key', 'Summary', 'Tipo', 'Status', 'Proyecto', 'Equipo asignado',
+    'Assignee', 'Reporter', 'Epic Link', 'Prioridad', 'Story Points',
+    'Sprint', 'Labels', 'Components', 'Fix Version', 'Release Notes',
+    'Resolución', 'Created', 'Updated',
+    // planificación
+    'F. Asignación', 'F. Fin Inicial', 'F. Finalización', 'F. Entrega',
+    'ETC (días)', 'PRN',
+    // escalados
+    'Escalados (hist.)',
+    // responsables
+    'Resp. Java', 'Resp. Cobol', 'Resp. Gestión', 'Resp. Parametría', 'Resp. QA',
+    // horas por fase/perfil
+    'H. Análisis Java', 'H. Desarrollo Java', 'H. Pruebas Java', 'H. AF Java',
+    'H. Análisis Cobol', 'H. Desarrollo Cobol', 'H. Pruebas Cobol', 'H. AF Cobol',
+    'H. Análisis Dialogue', 'H. Desarrollo Dialogue', 'H. Pruebas Dialogue', 'H. AF Dialogue',
+    'H. Análisis Parametría', 'H. Desarrollo Parametría', 'H. Pruebas Parametría', 'H. AF Parametría',
+    'H. Análisis QA', 'H. AF QA',
+    'Total Horas',
+    // planificación items detalle
+    'Planificación Items',
+  ]
+
+  const rows = items.map(item => {
+    const fechaFinInicial = item.fecha_finalizacion_inicial ?? calcularFechaFinInicial(item, piActivo) ?? ''
+    const fechaFin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo) ?? ''
+    const etc = calcularEtc(item, piActivo)
+    const prn = calcularPrn(item, piActivo)
+
+    const escaladosHist = (
+      (item.escalados ?? []).length > 0 ? item.escalados : item.fecha_escalado
+        ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+        : []
+    ).map(e => `${e.fecha_escalado}→${e.fecha_reinicio ?? 'abierto'}`).join(' | ')
+
+    const planItems = (item.planificacion_items ?? [])
+      .map(p => `${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h`)
+      .join(' | ')
+
+    return [
+      item.ticket_key ?? '',
+      item.summary,
+      item.issue_type ?? '',
+      item.status ?? '',
+      item.project ?? '',
+      item.assigned_team ?? '',
+      item.assignee ?? '',
+      item.reporter ?? '',
+      item.epic_link ?? '',
+      item.priority ?? '',
+      item.story_points ?? '',
+      item.sprint ?? '',
+      item.labels ?? '',
+      item.components ?? '',
+      item.fix_version ?? '',
+      item.include_release_notes ?? '',
+      item.resolution ?? '',
+      item.created ?? '',
+      item.updated ?? '',
+      // planificación
+      item.fecha_asignacion ?? '',
+      fechaFinInicial,
+      fechaFin,
+      item.fecha_entrega ?? '',
+      etc || '',
+      prn,
+      // escalados
+      escaladosHist,
+      // responsables
+      item.responsable_java ?? '',
+      item.responsable_cobol ?? '',
+      item.responsable_dialogue ?? '',
+      item.responsable_parametria ?? '',
+      item.responsable_qa ?? '',
+      // horas java
+      item.horas_analisis_java ?? '',
+      item.horas_desarrollo_java ?? '',
+      item.horas_pruebas_java ?? '',
+      item.horas_af_java ?? '',
+      // horas cobol
+      item.horas_analisis_cobol ?? '',
+      item.horas_desarrollo_cobol ?? '',
+      item.horas_pruebas_cobol ?? '',
+      item.horas_af_cobol ?? '',
+      // horas dialogue
+      item.horas_analisis_dialogue ?? '',
+      item.horas_desarrollo_dialogue ?? '',
+      item.horas_pruebas_dialogue ?? '',
+      item.horas_af_dialogue ?? '',
+      // horas parametría
+      item.horas_analisis_parametria ?? '',
+      item.horas_desarrollo_parametria ?? '',
+      item.horas_pruebas_parametria ?? '',
+      item.horas_af_parametria ?? '',
+      // horas qa
+      item.horas_analisis_qa ?? '',
+      item.horas_af_qa ?? '',
+      item.total_horas ?? '',
+      planItems,
+    ]
+  })
+
+  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows])
+
+  // Column widths (approximate chars)
+  ws['!cols'] = [
+    { wch: 16 }, { wch: 50 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 22 },
+    { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 10 },
+    { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 10 }, { wch: 28 },
+    { wch: 40 },
+    { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
+    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 },
+    { wch: 12 },
+    { wch: 60 },
+  ]
+
+  // Freeze header row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Backlog')
+  XLSX.writeFile(wb, `backlog-${modulo.toLowerCase()}-${today}.xlsx`)
 }
 
 // ── colores badges ─────────────────────────────────────────────────────────────
@@ -1442,6 +1579,14 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           <button onClick={() => setCreating(true)}
             className="flex items-center gap-1 rounded-lg bg-allianz-blue px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
             <Plus size={12} /> Nuevo
+          </button>
+          <button
+            onClick={() => exportExcel(filtered, modulo, piActivo)}
+            disabled={filtered.length === 0}
+            className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors disabled:opacity-40"
+            title={`Exportar ${filtered.length} tickets a Excel`}
+          >
+            <Download size={12} /> Excel
           </button>
           <button onClick={load} disabled={loading}
             className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors">
