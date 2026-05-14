@@ -5,13 +5,14 @@ import {
   PieChart, RefreshCw, Target, TrendingUp, X,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { BacklogItem, PersonaCapacidad } from '../../types'
+import { BacklogItem, PersonaCapacidad, PiInfo } from '../../types'
 import { getBacklog } from '../../services/api'
 import { DataPanel, KpiCard, StatusBadge } from '../ui/Corporate'
 
 interface Props {
   modulo: 'MEJORA_CONTINUA' | 'FABRICA'
   piId?: number | null
+  piActivo?: PiInfo | null
   active: boolean
   capacidad: PersonaCapacidad[]
 }
@@ -95,16 +96,29 @@ function csvCell(value: unknown) {
   return `"${text.replace(/"/g, '""')}"`
 }
 
-function downloadCsv(filename: string, rows: BacklogItem[]) {
+function etcHorasReales(etc: number | null | undefined, piActivo?: PiInfo | null) {
+  const dias = etc ?? 0
+  if (dias <= 0) return 0
+  const horasPorDia = piActivo?.horas_por_dia && piActivo.horas_por_dia > 0 ? piActivo.horas_por_dia : 8
+  return dias * horasPorDia
+}
+
+function formatEtc(etc: number | null | undefined, piActivo?: PiInfo | null) {
+  const dias = etc ?? 0
+  if (dias <= 0) return ''
+  return `${dias}d / ${etcHorasReales(dias, piActivo)}h reales`
+}
+
+function downloadCsv(filename: string, rows: BacklogItem[], piActivo?: PiInfo | null) {
   const headers = [
     'ticket_key', 'summary', 'status', 'issue_type', 'assignee', 'responsables',
     'total_horas', 'fecha_asignacion', 'fecha_finalizacion', 'fecha_entrega',
-    'fecha_escalado', 'fecha_reinicio', 'etc',
+    'fecha_escalado', 'fecha_reinicio', 'etc_dias_horas',
   ]
   const body = rows.map(item => [
     item.ticket_key, item.summary, item.status, item.issue_type, item.assignee, ticketResponsible(item),
     item.total_horas, item.fecha_asignacion, item.fecha_finalizacion, item.fecha_entrega,
-    item.fecha_escalado, item.fecha_reinicio, item.etc,
+    item.fecha_escalado, item.fecha_reinicio, formatEtc(item.etc, piActivo),
   ].map(csvCell).join(','))
   const csv = [headers.map(csvCell).join(','), ...body].join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
@@ -279,7 +293,7 @@ function KpiAction({
   )
 }
 
-function DetailTable({ rows }: { rows: BacklogItem[] }) {
+function DetailTable({ rows, piActivo }: { rows: BacklogItem[]; piActivo?: PiInfo | null }) {
   return (
     <DataPanel title="Detalle filtrado" description={`${rows.length} ticket${rows.length !== 1 ? 's' : ''}`}>
       <div className="overflow-x-auto">
@@ -304,7 +318,7 @@ function DetailTable({ rows }: { rows: BacklogItem[] }) {
                 <td className="font-mono text-xs">{item.fecha_finalizacion ?? '—'}</td>
                 <td className="font-mono text-xs">{item.fecha_entrega ?? '—'}</td>
                 <td className="font-mono text-xs">{item.fecha_escalado ?? '—'}</td>
-                <td className="text-right font-mono">{item.etc ?? 0}</td>
+                <td className="text-right font-mono">{formatEtc(item.etc, piActivo) || '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -314,7 +328,7 @@ function DetailTable({ rows }: { rows: BacklogItem[] }) {
   )
 }
 
-export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
+export function ReportePiPanel({ modulo, piId, piActivo, active, capacidad }: Props) {
   const [items, setItems] = useState<BacklogItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -483,7 +497,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
           <button onClick={copySummary} className="corporate-button-secondary">
             <Copy size={14} /> {copied ? 'Copiado' : 'Copiar resumen'}
           </button>
-          <button onClick={() => downloadCsv(`reporte-${modulo.toLowerCase()}-${todayIso()}.csv`, detailRows)} className="corporate-button-secondary">
+          <button onClick={() => downloadCsv(`reporte-${modulo.toLowerCase()}-${todayIso()}.csv`, detailRows, piActivo)} className="corporate-button-secondary">
             <Download size={14} /> Exportar CSV
           </button>
           <button onClick={load} disabled={loading} className="corporate-button-secondary">
@@ -568,7 +582,7 @@ export function ReportePiPanel({ modulo, piId, active, capacidad }: Props) {
           </button>
         )}
       </div>
-      <DetailTable rows={detailRows} />
+      <DetailTable rows={detailRows} piActivo={piActivo} />
     </div>
   )
 }

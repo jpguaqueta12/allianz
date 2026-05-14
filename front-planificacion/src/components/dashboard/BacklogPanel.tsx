@@ -117,6 +117,17 @@ function calcularEtc(item: BacklogItem, piActivo?: PiInfo | null): number {
   return calendarDaysBetween(last.fecha_escalado, fin)
 }
 
+function etcHorasReales(etc: number, piActivo?: PiInfo | null): number {
+  const horasPorDia = piActivo?.horas_por_dia && piActivo.horas_por_dia > 0 ? piActivo.horas_por_dia : 8
+  return etc * horasPorDia
+}
+
+function formatEtc(etc: number, piActivo?: PiInfo | null, long = false): string {
+  if (etc <= 0) return ''
+  const horas = etcHorasReales(etc, piActivo)
+  return long ? `${etc} días / ${horas}h reales` : `${etc}d / ${horas}h reales`
+}
+
 function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
   const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
   if (!fin || !piActivo?.fecha_fin) return 'Normal'
@@ -135,7 +146,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     'Resolución', 'Created', 'Updated',
     // planificación
     'F. Asignación', 'F. Fin Inicial', 'F. Finalización', 'F. Entrega',
-    'ETC (días)', 'PRN',
+    'ETC (días / horas)', 'PRN',
     // escalados
     'Escalados (hist.)',
     // responsables
@@ -192,7 +203,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
       fechaFinInicial,
       fechaFin,
       item.fecha_entrega ?? '',
-      etc || '',
+      formatEtc(etc, piActivo),
       prn,
       // escalados
       escaladosHist,
@@ -239,7 +250,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 14 },
     { wch: 14 }, { wch: 14 }, { wch: 14 },
     { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-    { wch: 10 }, { wch: 28 },
+    { wch: 20 }, { wch: 28 },
     { wch: 40 },
     { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 },
     { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
@@ -921,7 +932,7 @@ function BacklogDetailModal({
             <DetailField label="Fecha Entrega" value={item.fecha_entrega ?? null} />
             <DetailField label="Fecha Escalado" value={item.fecha_escalado ?? null} />
             <DetailField label="Fecha Reinicio" value={item.fecha_reinicio ?? null} />
-            <DetailField label="ETC" value={`${calcularEtc(item, piActivo)} días`} />
+            <DetailField label="ETC" value={formatEtc(calcularEtc(item, piActivo), piActivo, true)} />
             <DetailField label="Resolution" value={item.resolution} />
             <DetailField label="Assignee" value={item.assignee} />
             <DetailField label="Reporter" value={item.reporter} />
@@ -1618,7 +1629,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Finalización</th>
                 <th className="min-w-[90px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">PRN</th>
                 <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
-                <th className="min-w-[70px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
+                <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
@@ -1699,7 +1710,15 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       {(() => {
                         const etc = calcularEtc(item, piActivo)
                         return etc > 0
-                          ? <span className="font-mono font-bold text-orange-700">{etc}d</span>
+                          ? (
+                            <span
+                              className="inline-flex flex-col items-end font-mono font-bold leading-tight text-orange-700"
+                              title={formatEtc(etc, piActivo, true)}
+                            >
+                              <span>{etc}d</span>
+                              <span className="text-[10px] font-semibold text-orange-600">{etcHorasReales(etc, piActivo)}h reales</span>
+                            </span>
+                          )
                           : <span className="text-corporate-muted">—</span>
                       })()}
                     </td>

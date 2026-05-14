@@ -143,6 +143,7 @@ export function FabricaPage() {
                 modulo="FABRICA"
                 active={tab === 'reporte'}
                 piId={data.pi_activo?.id ?? selectedPiId}
+                piActivo={data.pi_activo}
                 capacidad={data.capacidad}
               />
             )}
