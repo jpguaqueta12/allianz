@@ -1786,7 +1786,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           <table className="w-full min-w-[1160px] table-auto text-xs border-collapse">
             <thead>
               <tr className="bg-slate-800 text-white">
-                <th className="w-10 px-3 py-3 text-left font-semibold border-r border-white/10 shrink-0">Plan</th>
+                <th className="min-w-[130px] px-3 py-3 text-left font-semibold border-r border-white/10 shrink-0">Tareas</th>
                 <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Inicial</th>
@@ -1811,14 +1811,15 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       isEven ? 'bg-white' : 'bg-slate-50/60',
                     )}>
                     <td className="px-2 py-2 border-r border-corporate-line/50">
-                      <button onClick={() => setEditing(item)} title="Planificar"
+                      <button onClick={() => setEditing(item)} title="Agregar o editar tareas y subtareas"
                         className={clsx(
-                          'flex items-center justify-center w-7 h-7 rounded-lg transition-colors',
+                          'inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors',
                           planned
                             ? 'bg-allianz-blue text-white hover:bg-blue-700 shadow-sm'
                             : 'bg-corporate-surface text-corporate-muted hover:bg-corporate-line',
                         )}>
                         <ClipboardEdit size={13} />
+                        {planned ? 'Editar tareas' : 'Agregar tareas'}
                       </button>
                     </td>
                     <td className="px-3 py-2 border-r border-corporate-line/30">
