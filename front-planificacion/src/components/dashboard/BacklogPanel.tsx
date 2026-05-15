@@ -710,7 +710,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
           <div className="rounded-xl border border-corporate-line shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-corporate-line bg-slate-50 px-4 py-3">
               <div>
-                <p className="text-xs font-semibold text-corporate-ink">Asignaciones</p>
+                <p className="text-xs font-semibold text-corporate-ink">Tareas y subtareas del IBL</p>
                 <p className="text-[11px] text-corporate-muted">Tarea, subtarea, responsable, horas y fechas independientes por asignación.</p>
               </div>
               <button
@@ -718,7 +718,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 onClick={() => setRows(prev => [...prev, newRow()])}
                 className="inline-flex items-center gap-1.5 rounded-md bg-allianz-blue px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
               >
-                <Plus size={13} /> Agregar
+                <Plus size={13} /> Agregar tarea/subtarea
               </button>
             </div>
 
@@ -819,10 +819,10 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                           <button
                             type="button"
                             onClick={() => removeRow(row.id)}
-                            className="rounded p-1 text-corporate-muted hover:bg-red-50 hover:text-red-600"
-                            title="Quitar asignación"
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+                            title="Eliminar esta tarea/subtarea"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={13} /> Eliminar
                           </button>
                         </td>
                       </tr>
