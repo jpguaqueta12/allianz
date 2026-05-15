@@ -45,6 +45,22 @@ class AddPersonaCapacidadRequest(BaseModel):
     tecnologia: str
 
 
+class UpdatePersonaCapacidadRequest(BaseModel):
+    capacidad_horas: Optional[float] = None
+    reserva_estimacion_horas: Optional[float] = None
+    reserva_estimacion_periodo: Optional[str] = None
+    senior: Optional[bool] = None
+
+
+class NovedadDisponibilidadRequest(BaseModel):
+    persona_id: int
+    tipo: str
+    fecha_inicio: str
+    fecha_fin: str
+    horas_por_dia: Optional[float] = None
+    descripcion: Optional[str] = None
+
+
 class AddProyectoCapacidadRequest(BaseModel):
     nombre: str
     identi: str
@@ -91,6 +107,11 @@ class PlanificacionItemRequest(BaseModel):
     perfil: str
     fase: str
     horas: Optional[float] = None
+    tarea: Optional[str] = None
+    subtarea: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    fecha_escalamiento: Optional[str] = None
 
 
 class PlanificacionRequest(BaseModel):

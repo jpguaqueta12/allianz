@@ -120,10 +120,57 @@ export async function removePersonaCapacidad(piId: number, personaId: number): P
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
 }
 
+export async function updatePersonaCapacidad(
+  piId: number,
+  personaId: number,
+  body: { capacidad_horas?: number | null; reserva_estimacion_horas?: number | null; reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'; senior?: boolean },
+): Promise<void> {
+  const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/personas/${personaId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
+}
+
 export async function sincronizarCapacidadAPI(piId: number): Promise<{ actualizado: number; horas_por_persona: number }> {
   const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/sincronizar`, { method: 'POST' })
   if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error' })); throw new Error(e.detail) }
   return r.json()
+}
+
+export interface NovedadDisponibilidad {
+  id: number
+  pi_id: number
+  persona_id: number
+  persona_nombre: string
+  tipo: string
+  fecha_inicio: string
+  fecha_fin: string
+  horas_por_dia: number | null
+  descripcion: string | null
+}
+
+export async function getNovedadesDisponibilidad(piId: number): Promise<NovedadDisponibilidad[]> {
+  const r = await fetch(`${BASE}/config/pis/${piId}/novedades`)
+  if (!r.ok) throw new Error('Error cargando novedades')
+  return r.json()
+}
+
+export async function createNovedadDisponibilidad(
+  piId: number,
+  body: { persona_id: number; tipo: string; fecha_inicio: string; fecha_fin: string; horas_por_dia?: number | null; descripcion?: string | null },
+): Promise<NovedadDisponibilidad> {
+  const r = await authFetch(`${BASE}/config/pis/${piId}/novedades`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error creando novedad' })); throw new Error(e.detail) }
+  return r.json()
+}
+
+export async function deleteNovedadDisponibilidad(piId: number, novedadId: number): Promise<void> {
+  const r = await authFetch(`${BASE}/config/pis/${piId}/novedades/${novedadId}`, { method: 'DELETE' })
+  if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error eliminando novedad' })); throw new Error(e.detail) }
 }
 
 export async function crearProyectoEnCapacidad(
@@ -264,6 +311,11 @@ export interface PlanificacionItem {
   perfil: PlanificacionPerfil
   fase: PlanificacionFase
   horas: number | null
+  tarea?: string | null
+  subtarea?: string | null
+  fecha_inicio?: string | null
+  fecha_fin?: string | null
+  fecha_escalamiento?: string | null
 }
 
 export interface PlanificacionData {
@@ -302,6 +354,10 @@ export interface ResponsableDisponible {
   capacidad_horas: number
   horas_asignadas: number
   horas_restantes: number
+  reserva_estimacion_horas: number
+  reserva_estimacion_base_horas: number
+  reserva_estimacion_periodo: 'PI' | 'SEMANAL' | 'MENSUAL'
+  novedades_horas: number
   al_tope: boolean
 }
 

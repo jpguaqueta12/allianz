@@ -6,7 +6,13 @@ export interface PersonaCapacidad {
   proyecto_principal: string | null
   capacidad: number | null
   carga_estimada: number
+  reserva_estimacion_horas: number
+  reserva_estimacion_base_horas: number
+  reserva_estimacion_periodo: 'PI' | 'SEMANAL' | 'MENSUAL'
+  novedades_horas: number
+  consumo_total: number
   horas_disponibles: number | null
+  senior: boolean
   estado: 'DISPONIBLE' | 'OCUPADO' | 'SOBRECARGADO' | 'LIDER TECNICO' | 'SIN CAPACIDAD'
 }
 
@@ -99,6 +105,11 @@ export interface BacklogItem {
     perfil: 'java' | 'cobol' | 'gestion' | 'calidad'
     fase: 'desarrollo'
     horas: number | null
+    tarea?: string | null
+    subtarea?: string | null
+    fecha_inicio?: string | null
+    fecha_fin?: string | null
+    fecha_escalamiento?: string | null
   }[]
   total_horas: number | null
   fecha_asignacion: string | null

@@ -17,6 +17,19 @@ def _add_working_days(start: date, dias: int, festivos: set[date]) -> date:
     return current
 
 
+def _working_days_in_range(start: date, end: date, festivos: set[date] | None = None) -> int:
+    if end < start:
+        return 0
+    festivos = festivos or set()
+    total = 0
+    current = start
+    while current <= end:
+        if current.weekday() < 5 and current not in festivos:
+            total += 1
+        current = current + timedelta(days=1)
+    return total
+
+
 def _calendar_days_between(start: date | None, end: date | None) -> int:
     if not start or not end or end <= start:
         return 0
@@ -76,6 +89,30 @@ def _calcular_fecha_fin_escalada(
         etc = _calendar_days_between(fecha_esc, fin)
         fin = _add_calendar_days(fecha_rei, etc)
     return fin
+
+
+def _effective_reserva_estimacion(
+    horas: float | int | None,
+    periodo: str | None,
+    pi_inicio: date | None,
+    pi_fin: date | None,
+    festivos: set[date] | None = None,
+) -> float:
+    base = float(horas or 0)
+    if base <= 0:
+        return 0
+    periodo_norm = (periodo or "PI").strip().upper()
+    if periodo_norm == "SEMANAL":
+        if not pi_inicio or not pi_fin:
+            return base
+        dias = _working_days_in_range(pi_inicio, pi_fin, festivos)
+        return base * max(math.ceil(dias / 5), 1)
+    if periodo_norm == "MENSUAL":
+        if not pi_inicio or not pi_fin:
+            return base
+        months = (pi_fin.year - pi_inicio.year) * 12 + (pi_fin.month - pi_inicio.month) + 1
+        return base * max(months, 1)
+    return base
 
 
 async def _pi_config_para_ticket(pool: Any, table: str, ticket_id: int) -> tuple[int, set[date]]:
@@ -143,7 +180,7 @@ QUALITY_TEAM_NAMES = (
 def _split_responsables(value: str | None) -> list[str]:
     if not value:
         return []
-    parts = [p.strip() for p in re.split(r"\s*(?:\||;|,)\s*", str(value))]
+    parts = [p.strip() for p in re.split(r"\s*(?:\||;|,|/|\by\b)\s*", str(value), flags=re.IGNORECASE)]
     seen: set[str] = set()
     result: list[str] = []
     for part in parts:
@@ -178,8 +215,22 @@ def _planificacion_items_from_extra(extra: object) -> list[dict]:
                 "perfil": perfil,
                 "fase": fase,
                 "horas": horas,
+                "tarea": (item.get("tarea") or "").strip() or None,
+                "subtarea": (item.get("subtarea") or "").strip() or None,
+                "fecha_inicio": item.get("fecha_inicio") or None,
+                "fecha_fin": item.get("fecha_fin") or None,
+                "fecha_escalamiento": item.get("fecha_escalamiento") or None,
             })
     return result
+
+
+def _row_escalado_activo(row: Any | dict) -> bool:
+    data = dict(row)
+    escalados = _json_load(data.get("escalados")) or []
+    if isinstance(escalados, list) and escalados:
+        last = escalados[-1]
+        return bool(last.get("fecha_escalado") and not last.get("fecha_reinicio"))
+    return bool(data.get("fecha_escalado") and not data.get("fecha_reinicio"))
 
 
 def _sumar_horas_legacy(row: Any | dict, asignadas: dict[str, float]) -> None:
@@ -217,7 +268,7 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
     asignadas: dict[str, float] = {}
     rows = await pool.fetch("""
         SELECT
-            extra,
+            extra, escalados, fecha_escalado, fecha_reinicio,
             responsable_java, responsable_cobol, responsable_dialogue,
             responsable_parametria, responsable_qa,
             horas_analisis_java, horas_analisis_cobol, horas_analisis_dialogue,
@@ -231,7 +282,7 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
         FROM backlog_mejora_continua WHERE pi_id = $1
         UNION ALL
         SELECT
-            extra,
+            extra, escalados, fecha_escalado, fecha_reinicio,
             responsable_java, responsable_cobol, responsable_dialogue,
             responsable_parametria, responsable_qa,
             horas_analisis_java, horas_analisis_cobol, horas_analisis_dialogue,
@@ -245,6 +296,8 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
         FROM backlog_fabrica WHERE pi_id = $1
     """, pi_id)
     for row in rows:
+        if _row_escalado_activo(row):
+            continue
         items = _planificacion_items_from_extra(row["extra"])
         if items:
             for item in items:
@@ -253,6 +306,33 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
         else:
             _sumar_horas_legacy(row, asignadas)
     return asignadas
+
+
+async def _calcular_novedades_por_persona(pool: Any, pi_id: int) -> dict[int, float]:
+    pi_row = await pool.fetchrow(
+        "SELECT fecha_inicio, fecha_fin, horas_por_dia FROM pi WHERE id = $1",
+        pi_id,
+    )
+    if not pi_row:
+        return {}
+    festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
+    festivos = {f["fecha"] for f in festivos_rows}
+    pi_inicio = _as_date(pi_row["fecha_inicio"])
+    pi_fin = _as_date(pi_row["fecha_fin"])
+    default_horas = float(pi_row["horas_por_dia"] or 8)
+    rows = await pool.fetch("""
+        SELECT persona_id, fecha_inicio, fecha_fin, horas_por_dia
+        FROM disponibilidad_novedades
+        WHERE pi_id = $1
+    """, pi_id)
+    result: dict[int, float] = {}
+    for row in rows:
+        inicio = max(_as_date(row["fecha_inicio"]), pi_inicio)
+        fin = min(_as_date(row["fecha_fin"]), pi_fin)
+        dias = _working_days_in_range(inicio, fin, festivos)
+        horas = dias * float(row["horas_por_dia"] or default_horas)
+        result[row["persona_id"]] = result.get(row["persona_id"], 0) + horas
+    return result
 
 
 async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_id: int | None = None) -> list[dict]:
@@ -264,6 +344,12 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
         return []
 
     asignadas = await _calcular_horas_asignadas_por_persona(pool, pi_id)
+    novedades = await _calcular_novedades_por_persona(pool, pi_id)
+    pi_row = await pool.fetchrow("SELECT fecha_inicio, fecha_fin FROM pi WHERE id = $1", pi_id)
+    festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
+    festivos = {f["fecha"] for f in festivos_rows}
+    pi_inicio = _as_date(pi_row["fecha_inicio"]) if pi_row else None
+    pi_fin = _as_date(pi_row["fecha_fin"]) if pi_row else None
     rows = await pool.fetch("""
         SELECT
             per.id,
@@ -271,7 +357,10 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
             per.tecnologia,
             per.rol,
             pr.identi           AS proyecto_principal,
-            cpp.capacidad_horas AS capacidad
+            cpp.capacidad_horas AS capacidad,
+            cpp.reserva_estimacion_horas::float AS reserva_estimacion_horas,
+            cpp.reserva_estimacion_periodo,
+            cpp.senior
         FROM personas per
         JOIN capacidad_persona_pi cpp ON cpp.persona_id = per.id
         LEFT JOIN proyectos pr ON pr.id = cpp.proyecto_principal
@@ -283,23 +372,37 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
     for row in rows:
         item = dict(row)
         carga = round(asignadas.get(item["nombre"], 0), 1)
+        reserva = round(_effective_reserva_estimacion(
+            item.get("reserva_estimacion_horas"),
+            item.get("reserva_estimacion_periodo"),
+            pi_inicio,
+            pi_fin,
+            festivos,
+        ), 1)
+        novedad = round(novedades.get(item["id"], 0), 1)
+        consumo_total = round(carga + reserva + novedad, 1)
         capacidad = item["capacidad"]
         if item["rol"] == "Lider Tec.":
-            horas_disponibles = capacidad
+            horas_disponibles = round(float(capacidad or 0) - reserva - novedad, 1) if capacidad is not None else None
             estado = "LIDER TECNICO"
         elif capacidad is None:
             horas_disponibles = None
             estado = "SIN CAPACIDAD"
         else:
-            horas_disponibles = round(float(capacidad) - carga, 1)
-            if carga > float(capacidad):
+            horas_disponibles = round(float(capacidad) - consumo_total, 1)
+            if consumo_total > float(capacidad):
                 estado = "SOBRECARGADO"
-            elif carga >= float(capacidad) * 0.5:
+            elif consumo_total >= float(capacidad) * 0.5:
                 estado = "OCUPADO"
             else:
                 estado = "DISPONIBLE"
 
         item["carga_estimada"] = carga
+        item["reserva_estimacion_horas"] = reserva
+        item["reserva_estimacion_base_horas"] = round(float(item.get("reserva_estimacion_horas") or 0), 1)
+        item["reserva_estimacion_periodo"] = item.get("reserva_estimacion_periodo") or "PI"
+        item["novedades_horas"] = novedad
+        item["consumo_total"] = consumo_total
         item["horas_disponibles"] = horas_disponibles
         item["estado"] = estado
         result.append(item)
@@ -432,6 +535,123 @@ async def sincronizar_capacidad_a_pi(pool: Any, pi_id: int) -> dict:
     return {"actualizado": updated, "horas_por_persona": int(hpp)}
 
 
+async def update_persona_capacidad(
+    pool: Any,
+    pi_id: int,
+    persona_id: int,
+    fields: dict,
+) -> dict | None:
+    allowed = {"capacidad_horas", "reserva_estimacion_horas", "reserva_estimacion_periodo", "senior"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        row = await pool.fetchrow("""
+            SELECT persona_id, capacidad_horas, reserva_estimacion_horas::float AS reserva_estimacion_horas, reserva_estimacion_periodo, senior
+            FROM capacidad_persona_pi
+            WHERE pi_id=$1 AND persona_id=$2
+        """, pi_id, persona_id)
+        return dict(row) if row else None
+
+    for numeric_field in ("capacidad_horas", "reserva_estimacion_horas"):
+        if numeric_field in updates and updates[numeric_field] is not None:
+            value = float(updates[numeric_field])
+            if value < 0:
+                raise ValueError("Las horas no pueden ser negativas")
+            updates[numeric_field] = value
+    if "reserva_estimacion_periodo" in updates and updates["reserva_estimacion_periodo"] is not None:
+        periodo = str(updates["reserva_estimacion_periodo"]).strip().upper()
+        if periodo not in {"PI", "SEMANAL", "MENSUAL"}:
+            raise ValueError("Periodo de reserva inválido")
+        updates["reserva_estimacion_periodo"] = periodo
+
+    set_parts = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
+    await pool.execute(
+        f"UPDATE capacidad_persona_pi SET {', '.join(set_parts)} WHERE pi_id=$1 AND persona_id=$2",
+        pi_id, persona_id, *updates.values(),
+    )
+    row = await pool.fetchrow("""
+        SELECT persona_id, capacidad_horas, reserva_estimacion_horas::float AS reserva_estimacion_horas, reserva_estimacion_periodo, senior
+        FROM capacidad_persona_pi
+        WHERE pi_id=$1 AND persona_id=$2
+    """, pi_id, persona_id)
+    return dict(row) if row else None
+
+
+async def get_novedades_disponibilidad(pool: Any, pi_id: int) -> list[dict]:
+    rows = await pool.fetch("""
+        SELECT
+            n.id, n.pi_id, n.persona_id, p.nombre AS persona_nombre, n.tipo,
+            CONVERT(varchar(10), n.fecha_inicio, 23) AS fecha_inicio,
+            CONVERT(varchar(10), n.fecha_fin, 23) AS fecha_fin,
+            n.horas_por_dia::float AS horas_por_dia,
+            n.descripcion
+        FROM disponibilidad_novedades n
+        JOIN personas p ON p.id = n.persona_id
+        WHERE n.pi_id = $1
+        ORDER BY n.fecha_inicio DESC, p.nombre
+    """, pi_id)
+    return [dict(row) for row in rows]
+
+
+async def create_novedad_disponibilidad(pool: Any, pi_id: int, data: dict) -> dict:
+    fecha_inicio = _as_date(data.get("fecha_inicio"))
+    fecha_fin = _as_date(data.get("fecha_fin"))
+    if not fecha_inicio or not fecha_fin:
+        raise ValueError("Las fechas de la novedad son obligatorias")
+    if fecha_fin < fecha_inicio:
+        raise ValueError("La fecha fin no puede ser anterior a la fecha inicio")
+    tipo = (data.get("tipo") or "").strip().upper()
+    if not tipo:
+        raise ValueError("El tipo de novedad es obligatorio")
+    horas_por_dia = data.get("horas_por_dia")
+    if horas_por_dia is not None and float(horas_por_dia) < 0:
+        raise ValueError("Las horas por día no pueden ser negativas")
+
+    exists = await pool.fetchval(
+        "SELECT COUNT(*) FROM capacidad_persona_pi WHERE pi_id=$1 AND persona_id=$2",
+        pi_id, data.get("persona_id"),
+    )
+    if not exists:
+        raise ValueError("La persona no pertenece a la capacidad de este PI")
+
+    row = await pool.fetchrow("""
+        INSERT INTO disponibilidad_novedades
+            (pi_id, persona_id, tipo, fecha_inicio, fecha_fin, horas_por_dia, descripcion)
+        VALUES ($1, $2, $3, $4, $5, $6, $7);
+        SELECT CAST(SCOPE_IDENTITY() AS int) AS id
+    """,
+        pi_id,
+        data.get("persona_id"),
+        tipo,
+        fecha_inicio,
+        fecha_fin,
+        float(horas_por_dia) if horas_por_dia is not None else None,
+        data.get("descripcion"),
+    )
+    created_id = row["id"] if row else None
+    rows = await pool.fetch("""
+        SELECT
+            n.id, n.pi_id, n.persona_id, p.nombre AS persona_nombre, n.tipo,
+            CONVERT(varchar(10), n.fecha_inicio, 23) AS fecha_inicio,
+            CONVERT(varchar(10), n.fecha_fin, 23) AS fecha_fin,
+            n.horas_por_dia::float AS horas_por_dia,
+            n.descripcion
+        FROM disponibilidad_novedades n
+        JOIN personas p ON p.id = n.persona_id
+        WHERE n.id = $1
+    """, created_id)
+    if not rows:
+        raise ValueError("No se pudo cargar la novedad creada")
+    return dict(rows[0])
+
+
+async def delete_novedad_disponibilidad(pool: Any, pi_id: int, novedad_id: int) -> bool:
+    result = await pool.execute(
+        "DELETE FROM disponibilidad_novedades WHERE pi_id=$1 AND id=$2",
+        pi_id, novedad_id,
+    )
+    return result == "DELETE 1"
+
+
 # ─── GESTIÓN CAPACIDAD PROYECTOS ──────────────────────────────────────────────
 
 async def crear_y_agregar_proyecto(
@@ -483,7 +703,10 @@ async def get_responsables_disponibles(pool: Any, modulo: str, pi_id: int | None
         return []
 
     personas = await pool.fetch("""
-        SELECT p.id, p.nombre, p.tecnologia, p.rol, cpp.capacidad_horas
+        SELECT
+            p.id, p.nombre, p.tecnologia, p.rol, cpp.capacidad_horas,
+            cpp.reserva_estimacion_horas::float AS reserva_estimacion_horas,
+            cpp.reserva_estimacion_periodo
         FROM personas p
         JOIN capacidad_persona_pi cpp ON cpp.persona_id = p.id
         WHERE cpp.pi_id = $1 AND p.activo = TRUE
@@ -491,11 +714,26 @@ async def get_responsables_disponibles(pool: Any, modulo: str, pi_id: int | None
     """, pi_id)
 
     asignadas = await _calcular_horas_asignadas_por_persona(pool, pi_id)
+    novedades = await _calcular_novedades_por_persona(pool, pi_id)
+    pi_row = await pool.fetchrow("SELECT fecha_inicio, fecha_fin FROM pi WHERE id = $1", pi_id)
+    festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
+    festivos = {f["fecha"] for f in festivos_rows}
+    pi_inicio = _as_date(pi_row["fecha_inicio"]) if pi_row else None
+    pi_fin = _as_date(pi_row["fecha_fin"]) if pi_row else None
 
     result = []
     for p in personas:
         cap  = float(p["capacidad_horas"] or 0)
         asig = asignadas.get(p["nombre"], 0)
+        reserva = _effective_reserva_estimacion(
+            p["reserva_estimacion_horas"],
+            p["reserva_estimacion_periodo"],
+            pi_inicio,
+            pi_fin,
+            festivos,
+        )
+        novedad = novedades.get(p["id"], 0)
+        consumo = asig + reserva + novedad
         result.append({
             "id":              p["id"],
             "nombre":          p["nombre"],
@@ -503,8 +741,12 @@ async def get_responsables_disponibles(pool: Any, modulo: str, pi_id: int | None
             "rol":             p["rol"],
             "capacidad_horas": cap,
             "horas_asignadas": round(asig, 1),
-            "horas_restantes": round(max(cap - asig, 0), 1),
-            "al_tope":         cap > 0 and asig >= cap,
+            "reserva_estimacion_horas": round(reserva, 1),
+            "reserva_estimacion_base_horas": round(float(p["reserva_estimacion_horas"] or 0), 1),
+            "reserva_estimacion_periodo": p["reserva_estimacion_periodo"] or "PI",
+            "novedades_horas": round(novedad, 1),
+            "horas_restantes": round(max(cap - consumo, 0), 1),
+            "al_tope":         cap > 0 and consumo >= cap,
         })
     return result
 

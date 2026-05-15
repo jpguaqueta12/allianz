@@ -8,7 +8,10 @@ from app.db.queries import (
     _add_calendar_days,
     _calendar_days_between,
     _calcular_fecha_fin,
+    _effective_reserva_estimacion,
     _horas_por_perfil_de_data,
+    _row_escalado_activo,
+    _working_days_in_range,
 )
 
 
@@ -62,6 +65,34 @@ class FechaPlanificacionTests(unittest.TestCase):
 
         self.assertEqual(etc, 1)
         self.assertEqual(fecha_fin, date(2022, 1, 16))
+
+    def test_escalado_activo_libera_capacidad(self):
+        self.assertTrue(_row_escalado_activo({
+            "escalados": json.dumps([{"fecha_escalado": "2026-05-15", "fecha_reinicio": None}]),
+        }))
+        self.assertFalse(_row_escalado_activo({
+            "escalados": json.dumps([{"fecha_escalado": "2026-05-15", "fecha_reinicio": "2026-05-20"}]),
+        }))
+
+    def test_novedades_cuentan_dias_laborables_sin_festivos(self):
+        dias = _working_days_in_range(
+            date(2026, 5, 15),
+            date(2026, 5, 19),
+            {date(2026, 5, 18)},
+        )
+
+        self.assertEqual(dias, 2)
+
+    def test_reserva_estimacion_semanal_se_expande_al_pi(self):
+        horas = _effective_reserva_estimacion(
+            6,
+            "SEMANAL",
+            date(2026, 5, 15),
+            date(2026, 5, 29),
+            set(),
+        )
+
+        self.assertEqual(horas, 18)
 
 
 if __name__ == "__main__":

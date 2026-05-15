@@ -77,6 +77,9 @@ SCHEMA_STATEMENTS = [
             persona_id INT NOT NULL,
             proyecto_principal INT NULL,
             capacidad_horas INT NULL,
+            reserva_estimacion_horas DECIMAL(12,2) NOT NULL CONSTRAINT DF_cpp_reserva_estimacion DEFAULT 0,
+            reserva_estimacion_periodo NVARCHAR(20) NOT NULL CONSTRAINT DF_cpp_reserva_periodo DEFAULT 'PI',
+            senior BIT NOT NULL CONSTRAINT DF_cpp_senior DEFAULT 0,
             CONSTRAINT FK_cpp_pi FOREIGN KEY (pi_id) REFERENCES dbo.pi(id) ON DELETE CASCADE,
             CONSTRAINT FK_cpp_persona FOREIGN KEY (persona_id) REFERENCES dbo.personas(id) ON DELETE CASCADE,
             CONSTRAINT FK_cpp_proyecto FOREIGN KEY (proyecto_principal) REFERENCES dbo.proyectos(id),
@@ -97,6 +100,27 @@ SCHEMA_STATEMENTS = [
             CONSTRAINT FK_cppi_pi FOREIGN KEY (pi_id) REFERENCES dbo.pi(id) ON DELETE CASCADE,
             CONSTRAINT FK_cppi_proyecto FOREIGN KEY (proyecto_id) REFERENCES dbo.proyectos(id),
             CONSTRAINT UQ_cppi_pi_proyecto UNIQUE (pi_id, proyecto_id)
+        );
+    END
+    """,
+    "IF COL_LENGTH('dbo.capacidad_persona_pi', 'reserva_estimacion_horas') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD reserva_estimacion_horas DECIMAL(12,2) NOT NULL CONSTRAINT DF_cpp_reserva_estimacion_added DEFAULT 0;",
+    "IF COL_LENGTH('dbo.capacidad_persona_pi', 'reserva_estimacion_periodo') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD reserva_estimacion_periodo NVARCHAR(20) NOT NULL CONSTRAINT DF_cpp_reserva_periodo_added DEFAULT 'PI';",
+    "IF COL_LENGTH('dbo.capacidad_persona_pi', 'senior') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD senior BIT NOT NULL CONSTRAINT DF_cpp_senior_added DEFAULT 0;",
+    """
+    IF OBJECT_ID('dbo.disponibilidad_novedades', 'U') IS NULL
+    BEGIN
+        CREATE TABLE dbo.disponibilidad_novedades (
+            id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+            pi_id INT NOT NULL,
+            persona_id INT NOT NULL,
+            tipo NVARCHAR(40) NOT NULL,
+            fecha_inicio DATE NOT NULL,
+            fecha_fin DATE NOT NULL,
+            horas_por_dia DECIMAL(12,2) NULL,
+            descripcion NVARCHAR(MAX) NULL,
+            created_at DATETIME2 NOT NULL CONSTRAINT DF_disp_nov_created DEFAULT SYSUTCDATETIME(),
+            CONSTRAINT FK_disp_nov_pi FOREIGN KEY (pi_id) REFERENCES dbo.pi(id) ON DELETE CASCADE,
+            CONSTRAINT FK_disp_nov_persona FOREIGN KEY (persona_id) REFERENCES dbo.personas(id) ON DELETE CASCADE
         );
     END
     """,
@@ -358,6 +382,7 @@ SCHEMA_STATEMENTS = [
 INDEX_STATEMENTS = [
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_pi_activo_modulo' AND object_id=OBJECT_ID('dbo.pi')) CREATE INDEX idx_pi_activo_modulo ON dbo.pi(modulo, activo, fecha_inicio DESC);",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_cpp_pi_persona' AND object_id=OBJECT_ID('dbo.capacidad_persona_pi')) CREATE INDEX idx_cpp_pi_persona ON dbo.capacidad_persona_pi(pi_id, persona_id);",
+    "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_disp_nov_pi_persona' AND object_id=OBJECT_ID('dbo.disponibilidad_novedades')) CREATE INDEX idx_disp_nov_pi_persona ON dbo.disponibilidad_novedades(pi_id, persona_id, fecha_inicio, fecha_fin);",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_cppi_pi_proyecto' AND object_id=OBJECT_ID('dbo.capacidad_proyecto_pi')) CREATE INDEX idx_cppi_pi_proyecto ON dbo.capacidad_proyecto_pi(pi_id, proyecto_id);",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='uq_bmc_ticket_pi' AND object_id=OBJECT_ID('dbo.backlog_mejora_continua')) CREATE UNIQUE INDEX uq_bmc_ticket_pi ON dbo.backlog_mejora_continua(ticket_key, pi_id) WHERE ticket_key IS NOT NULL;",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='uq_bfab_ticket_pi' AND object_id=OBJECT_ID('dbo.backlog_fabrica')) CREATE UNIQUE INDEX uq_bfab_ticket_pi ON dbo.backlog_fabrica(ticket_key, pi_id) WHERE ticket_key IS NOT NULL;",

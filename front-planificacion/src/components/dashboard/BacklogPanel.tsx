@@ -175,7 +175,11 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     ).map(e => `${e.fecha_escalado}→${e.fecha_reinicio ?? 'abierto'}`).join(' | ')
 
     const planItems = (item.planificacion_items ?? [])
-      .map(p => `${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h`)
+      .map(p => {
+        const tarea = [p.tarea, p.subtarea].filter(Boolean).join(' / ') || 'Sin tarea'
+        const fechas = [p.fecha_inicio, p.fecha_fin].filter(Boolean).join('→')
+        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
+      })
       .join(' | ')
 
     return [
@@ -363,6 +367,9 @@ function PaginationControls({
 type Tech = 'java' | 'cobol' | 'gestion' | 'calidad'
 type Fase = 'desarrollo'
 
+const TAREA_OPTIONS = ['Task', 'Bug', 'Historia', 'Soporte', 'Evolutivo', 'Estimación']
+const SUBTAREA_OPTIONS = ['Versionamiento', 'Devolución', 'Estabilización', 'Soporte', 'Evolutivo', 'Estimación', 'Desarrollo', 'QA']
+
 const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'GESTION' | 'CALIDAD' }[] = [
   { id: 'java',       label: 'JAVA',       color: 'text-blue-700',   headerBg: 'bg-blue-600',   techMatch: 'JAVA'  },
   { id: 'cobol',      label: 'COBOL',      color: 'text-emerald-700',headerBg: 'bg-emerald-600',techMatch: 'COBOL' },
@@ -400,7 +407,7 @@ type PlanificacionRow = PlanificacionItem & { id: string }
 function splitResponsables(value: string | null): string[] {
   if (!value) return []
   return value
-    .split(/\s*(?:\||;|,)\s*/)
+    .split(/\s*(?:\||;|,|\/|\by\b)\s*/i)
     .map(v => v.trim())
     .filter(Boolean)
 }
@@ -445,7 +452,18 @@ function itemToPlan(item: BacklogItem): PlanificacionData {
 }
 
 function newRow(): PlanificacionRow {
-  return { id: crypto.randomUUID(), responsable: null, perfil: 'java', fase: 'desarrollo', horas: null }
+  return {
+    id: crypto.randomUUID(),
+    responsable: null,
+    perfil: 'java',
+    fase: 'desarrollo',
+    horas: null,
+    tarea: 'Task',
+    subtarea: null,
+    fecha_inicio: null,
+    fecha_fin: null,
+    fecha_escalamiento: null,
+  }
 }
 
 function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
@@ -462,12 +480,12 @@ function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
         .reduce((sum, fase) => sum + (((plan[`horas_${fase}_${tech.id}` as keyof PlanificacionData] as number | null) ?? 0)), 0)
     if (horas <= 0) return
     if (responsables.length === 0) {
-      rows.push({ id: crypto.randomUUID(), responsable: null, perfil: tech.id, fase: 'desarrollo', horas })
+      rows.push({ ...newRow(), responsable: null, perfil: tech.id, fase: 'desarrollo', horas })
       return
     }
     const horasPorResponsable = horas / responsables.length
     responsables.forEach(responsable => {
-      rows.push({ id: crypto.randomUUID(), responsable, perfil: tech.id, fase: 'desarrollo', horas: horasPorResponsable })
+      rows.push({ ...newRow(), responsable, perfil: tech.id, fase: 'desarrollo', horas: horasPorResponsable })
     })
   })
   return rows
@@ -476,7 +494,7 @@ function legacyRowsFromPlan(plan: PlanificacionData): PlanificacionRow[] {
 function itemToRows(item: BacklogItem): PlanificacionRow[] {
   const stored = item.planificacion_items ?? []
   if (stored.length) {
-    return stored.map(row => ({ ...row, perfil: normalizePerfil(row.perfil), fase: 'desarrollo' as const, id: crypto.randomUUID() }))
+    return stored.map(row => ({ ...newRow(), ...row, perfil: normalizePerfil(row.perfil), fase: 'desarrollo' as const, id: crypto.randomUUID() }))
   }
   const legacy = legacyRowsFromPlan(itemToPlan(item))
   return legacy.length ? legacy : [newRow()]
@@ -503,6 +521,11 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
       perfil: row.perfil,
       fase: 'desarrollo',
       horas,
+      tarea: row.tarea?.trim() || null,
+      subtarea: row.subtarea?.trim() || null,
+      fecha_inicio: row.fecha_inicio || null,
+      fecha_fin: row.fecha_fin || null,
+      fecha_escalamiento: row.fecha_escalamiento || null,
     })
   })
 
@@ -609,9 +632,17 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
 
   function saveRows() {
     const activeRows = rows.filter(row => row.responsable || (row.horas ?? 0) > 0)
-    const incomplete = activeRows.some(row => !row.responsable || !row.horas || row.horas <= 0)
+    const incomplete = activeRows.some(row => !row.responsable || !row.tarea || !row.subtarea || !row.horas || row.horas <= 0)
     if (incomplete) {
-      setError('Cada asignación debe tener responsable y horas mayores a 0')
+      setError('Cada asignación debe tener tarea, subtarea, responsable y horas mayores a 0')
+      return
+    }
+    const invalidDates = activeRows.some(row =>
+      (row.fecha_inicio && row.fecha_fin && row.fecha_fin < row.fecha_inicio) ||
+      (row.fecha_inicio && row.fecha_escalamiento && row.fecha_escalamiento < row.fecha_inicio)
+    )
+    if (invalidDates) {
+      setError('Las fechas por asignación no son consistentes')
       return
     }
     handleSave({ ...rowsToPlan(activeRows), fecha_asignacion: fechaAsignacion })
@@ -680,7 +711,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
             <div className="flex items-center justify-between gap-3 border-b border-corporate-line bg-slate-50 px-4 py-3">
               <div>
                 <p className="text-xs font-semibold text-corporate-ink">Asignaciones</p>
-                <p className="text-[11px] text-corporate-muted">Responsable, perfil y horas de desarrollo por cada parte de la tarea.</p>
+                <p className="text-[11px] text-corporate-muted">Tarea, subtarea, responsable, horas y fechas independientes por asignación.</p>
               </div>
               <button
                 type="button"
@@ -692,12 +723,17 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-xs border-collapse">
+              <table className="w-full min-w-[1180px] text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-800 text-white">
+                    <th className="px-3 py-2.5 text-left font-semibold">Tarea</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Subtarea</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Responsable</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Perfil</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Horas</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Inicio</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Fin</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Esc.</th>
                     <th className="w-10 px-2 py-2.5" />
                   </tr>
                 </thead>
@@ -706,6 +742,22 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                     const responsables = responsablesForPerfil(personas, row.perfil)
                     return (
                       <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            list="tarea-options"
+                            value={row.tarea ?? ''}
+                            onChange={e => updateRow(row.id, { tarea: e.target.value || null })}
+                            className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          />
+                        </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            list="subtarea-options"
+                            value={row.subtarea ?? ''}
+                            onChange={e => updateRow(row.id, { subtarea: e.target.value || null })}
+                            className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          />
+                        </td>
                         <td className="border-b border-corporate-line px-3 py-2">
                           <select
                             value={row.responsable ?? ''}
@@ -739,6 +791,30 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                             className="ml-auto block w-28 rounded border border-corporate-line bg-white px-2 py-1.5 text-right text-xs font-medium text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
                           />
                         </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            type="date"
+                            value={row.fecha_inicio ?? ''}
+                            onChange={e => updateRow(row.id, { fecha_inicio: e.target.value || null })}
+                            className="w-32 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          />
+                        </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            type="date"
+                            value={row.fecha_fin ?? ''}
+                            onChange={e => updateRow(row.id, { fecha_fin: e.target.value || null })}
+                            className="w-32 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          />
+                        </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            type="date"
+                            value={row.fecha_escalamiento ?? ''}
+                            onChange={e => updateRow(row.id, { fecha_escalamiento: e.target.value || null })}
+                            className="w-32 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          />
+                        </td>
                         <td className="border-b border-corporate-line px-2 py-2 text-center">
                           <button
                             type="button"
@@ -755,14 +831,20 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-800 text-white">
-                    <td colSpan={2} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
+                    <td colSpan={4} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
                     <td className="px-3 py-2.5 text-right text-sm font-bold">
                       {totalGeneral > 0 ? totalGeneral : <span className="text-slate-500 font-normal text-xs">—</span>}
                     </td>
-                    <td />
+                    <td colSpan={4} />
                   </tr>
                 </tfoot>
               </table>
+              <datalist id="tarea-options">
+                {TAREA_OPTIONS.map(opt => <option key={opt} value={opt} />)}
+              </datalist>
+              <datalist id="subtarea-options">
+                {SUBTAREA_OPTIONS.map(opt => <option key={opt} value={opt} />)}
+              </datalist>
             </div>
           </div>
 
@@ -953,6 +1035,38 @@ function BacklogDetailModal({
           <div className="mt-3">
             <DetailField label="Equipo planificado" value={<ResponsablesCell item={item} />} />
           </div>
+          {(item.planificacion_items ?? []).length > 0 && (
+            <div className="mt-3 rounded border border-corporate-line">
+              <div className="border-b border-corporate-line bg-corporate-surface px-3 py-2 text-[11px] font-semibold uppercase text-corporate-muted">
+                Tareas y subtareas
+              </div>
+              <div className="max-h-52 overflow-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-corporate-muted">
+                    <tr>
+                      {['Tarea', 'Subtarea', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
+                        <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {item.planificacion_items!.map((row, idx) => (
+                      <tr key={idx} className="border-t border-corporate-line">
+                        <td className="px-2 py-1.5">{row.tarea ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.subtarea ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.responsable ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.perfil}</td>
+                        <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.fecha_inicio ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.fecha_fin ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.fecha_escalamiento ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1052,10 +1166,12 @@ function EscaladosCell({
   item,
   modulo,
   onSaved,
+  onCapacityRefresh,
 }: {
   item: BacklogItem
   modulo: string
   onSaved: (updated: EscalamientoPatch) => void
+  onCapacityRefresh?: () => void | Promise<void>
 }) {
   type Row = { fe: string; fr: string }
 
@@ -1124,6 +1240,7 @@ function EscaladosCell({
           etc: res.etc,
           status: res.status,
         })
+        onCapacityRefresh?.()
       })
       .catch(() => {
         setError('No se pudo guardar')
@@ -1439,6 +1556,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [error, setError]     = useState<string | null>(null)
   const [loaded, setLoaded]   = useState(false)
   const [search, setSearch]   = useState('')
+  const [personaFilter, setPersonaFilter] = useState('')
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
   const [creating, setCreating] = useState(false)
@@ -1499,7 +1617,15 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
     }
   }
 
+  const personaOptions = Array.from(new Set(
+    items.flatMap(item => responsablesByPerfil(item).flatMap(({ responsables }) => responsables)),
+  )).sort((a, b) => a.localeCompare(b))
+
   const filtered = items.filter(item => {
+    if (personaFilter) {
+      const assignedToPersona = responsablesByPerfil(item).some(({ responsables }) => responsables.includes(personaFilter))
+      if (!assignedToPersona) return false
+    }
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -1507,6 +1633,9 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       item.summary.toLowerCase().includes(q) ||
       (item.epic_link ?? '').toLowerCase().includes(q) ||
       (item.assignee ?? '').toLowerCase().includes(q) ||
+      (item.planificacion_items ?? []).some(row =>
+        `${row.tarea ?? ''} ${row.subtarea ?? ''}`.toLowerCase().includes(q)
+      ) ||
       responsablesByPerfil(item).some(({ responsables }) =>
         responsables.some(nombre => nombre.toLowerCase().includes(q))
       )
@@ -1522,7 +1651,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => {
     setPage(1)
-  }, [search, pageSize, items.length])
+  }, [search, personaFilter, pageSize, items.length])
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -1608,9 +1737,17 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       <div className="space-y-3">
         {/* barra búsqueda */}
         <div className="flex items-center gap-3">
-          <input type="text" placeholder="Buscar por ticket, resumen, épica, asignado, responsable…"
+          <input type="text" placeholder="Buscar por ticket, resumen, épica, asignado, responsable, tarea…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="flex-1 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none focus:ring-1 focus:ring-allianz-blue" />
+          <select
+            value={personaFilter}
+            onChange={e => setPersonaFilter(e.target.value)}
+            className="max-w-[220px] rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+          >
+            <option value="">Todas las personas</option>
+            {personaOptions.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
+          </select>
           <span className="text-xs text-corporate-muted whitespace-nowrap">
             {filtered.length}/{items.length} tickets
           </span>
@@ -1731,6 +1868,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         onSaved={updated =>
                           setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...updated } : it))
                         }
+                        onCapacityRefresh={onCapacityRefresh}
                       />
                     </td>
                     <td className="px-3 py-2 text-right border-r border-corporate-line/30">

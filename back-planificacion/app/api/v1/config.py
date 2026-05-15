@@ -2,7 +2,15 @@ from __future__ import annotations
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from app.auth.dependencies import require_superuser
-from app.models.requests import AddFestivoRequest, AddPersonaCapacidadRequest, AddProyectoCapacidadRequest, CreatePiRequest, UpdatePiRequest
+from app.models.requests import (
+    AddFestivoRequest,
+    AddPersonaCapacidadRequest,
+    AddProyectoCapacidadRequest,
+    CreatePiRequest,
+    NovedadDisponibilidadRequest,
+    UpdatePersonaCapacidadRequest,
+    UpdatePiRequest,
+)
 
 router = APIRouter()
 
@@ -114,6 +122,48 @@ async def remove_persona_capacidad(pi_id: int, persona_id: int, _: SuperUser):
     deleted = await Q.remove_persona_de_capacidad(get_pool(), pi_id, persona_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Persona no encontrada en la capacidad de este PI")
+    return {"success": True}
+
+
+@router.patch("/config/pis/{pi_id}/capacidad/personas/{persona_id}")
+async def update_persona_capacidad(pi_id: int, persona_id: int, body: UpdatePersonaCapacidadRequest, _: SuperUser):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    try:
+        updated = await Q.update_persona_capacidad(
+            get_pool(), pi_id, persona_id, body.model_dump(exclude_unset=True),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Persona no encontrada en la capacidad de este PI")
+    return updated
+
+
+@router.get("/config/pis/{pi_id}/novedades")
+async def get_novedades(pi_id: int):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    return await Q.get_novedades_disponibilidad(get_pool(), pi_id)
+
+
+@router.post("/config/pis/{pi_id}/novedades")
+async def add_novedad(pi_id: int, body: NovedadDisponibilidadRequest, _: SuperUser):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    try:
+        return await Q.create_novedad_disponibilidad(get_pool(), pi_id, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/config/pis/{pi_id}/novedades/{novedad_id}")
+async def delete_novedad(pi_id: int, novedad_id: int, _: SuperUser):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    deleted = await Q.delete_novedad_disponibilidad(get_pool(), pi_id, novedad_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Novedad no encontrada")
     return {"success": True}
 
 
