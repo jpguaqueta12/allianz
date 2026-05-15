@@ -2,17 +2,27 @@ from __future__ import annotations
 
 import json
 import unittest
+import asyncio
 from datetime import date
 
 from app.db.queries import (
     _add_calendar_days,
     _calendar_days_between,
     _calcular_fecha_fin,
+    _calcular_horas_asignadas_por_persona,
     _effective_reserva_estimacion,
     _horas_por_perfil_de_data,
     _row_escalado_activo,
     _working_days_in_range,
 )
+
+
+class FakePool:
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def fetch(self, query, *args):
+        return self.rows
 
 
 class FechaPlanificacionTests(unittest.TestCase):
@@ -93,6 +103,86 @@ class FechaPlanificacionTests(unittest.TestCase):
         )
 
         self.assertEqual(horas, 18)
+
+    def test_asignacion_a_usuario_incrementa_capacidad_consumida(self):
+        async def run():
+            rows = [{
+                "extra": json.dumps({
+                    "planificacion_items": [
+                        {
+                            "responsable": "Ana Perez",
+                            "perfil": "java",
+                            "fase": "desarrollo",
+                            "horas": 10,
+                            "tarea": "Task",
+                            "subtarea": "Soporte",
+                        },
+                        {
+                            "responsable": "Ana Perez",
+                            "perfil": "java",
+                            "fase": "desarrollo",
+                            "horas": 6,
+                            "tarea": "Bug",
+                            "subtarea": "Estabilización",
+                        },
+                        {
+                            "responsable": "Luis Gomez",
+                            "perfil": "cobol",
+                            "fase": "desarrollo",
+                            "horas": 4,
+                        },
+                    ]
+                }),
+                "escalados": "[]",
+                "fecha_escalado": None,
+                "fecha_reinicio": None,
+            }]
+
+            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+
+            self.assertEqual(asignadas["Ana Perez"], 16)
+            self.assertEqual(asignadas["Luis Gomez"], 4)
+
+        asyncio.run(run())
+
+    def test_eliminar_asignacion_de_usuario_libera_capacidad(self):
+        async def run():
+            rows = [{
+                "extra": json.dumps({"planificacion_items": []}),
+                "escalados": "[]",
+                "fecha_escalado": None,
+                "fecha_reinicio": None,
+                "responsable_java": None,
+                "responsable_cobol": None,
+                "responsable_dialogue": None,
+                "responsable_parametria": None,
+                "responsable_qa": None,
+            }]
+
+            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+
+            self.assertEqual(asignadas, {})
+
+        asyncio.run(run())
+
+    def test_ticket_escalado_no_consume_capacidad_del_usuario(self):
+        async def run():
+            rows = [{
+                "extra": json.dumps({
+                    "planificacion_items": [
+                        {"responsable": "Ana Perez", "perfil": "java", "fase": "desarrollo", "horas": 10},
+                    ]
+                }),
+                "escalados": json.dumps([{"fecha_escalado": "2026-05-15", "fecha_reinicio": None}]),
+                "fecha_escalado": "2026-05-15",
+                "fecha_reinicio": None,
+            }]
+
+            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+
+            self.assertEqual(asignadas, {})
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":
