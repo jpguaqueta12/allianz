@@ -53,6 +53,29 @@ def _calc_alerta(today: date, inicio: date, fin: date) -> str:
     return "verde" if pct > 0.30 else "amarilla"
 
 
+def _calc_alerta_compromiso(
+    today: date,
+    inicio: date | None,
+    fecha_comprometida: date | None,
+    fecha_fin_real: date | None,
+    finalizado: bool = False,
+    alerta_pct: float = 0.30,
+) -> str | None:
+    if not fecha_comprometida:
+        return None
+    if fecha_fin_real:
+        return "roja" if fecha_fin_real > fecha_comprometida else "verde"
+    if finalizado:
+        return "verde"
+    if today > fecha_comprometida:
+        return "roja"
+    if not inicio:
+        return "amarilla"
+    total = max((fecha_comprometida - inicio).days, 1)
+    restantes = max((fecha_comprometida - today).days, 0)
+    return "verde" if restantes / total > alerta_pct else "amarilla"
+
+
 def _calcular_fecha_fin(
     fecha_asignacion: date | None,
     java_total: float,
@@ -1272,26 +1295,28 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
     for item in backlog:
         policy = select_policy(item)
         start = _as_date(item.get("fecha_asignacion")) or _as_date((item.get("created") or "")[:10])
+        committed = _as_date(item.get("fecha_finalizacion_inicial"))
+        fin_real = _as_date(item.get("fecha_finalizacion"))
         entrega = _as_date(item.get("fecha_entrega"))
         escalado = _as_date(item.get("fecha_escalado"))
         reinicio = _as_date(item.get("fecha_reinicio"))
-        close_date = entrega if entrega else None
+        close_date = fin_real or entrega
         status = item.get("status")
-        finalizado = bool(entrega) or _is_finalizado_status(status)
+        finalizado = bool(close_date) or _is_finalizado_status(status)
         active_date = close_date or today
         pausa_dias = 0
         if policy.get("pausa_escalado") and escalado:
             pause_end = reinicio or active_date
             pausa_dias = _calendar_days_between(escalado, pause_end)
 
-        sla_dias = int(policy.get("sla_dias") or 10)
-        deadline = _add_calendar_days(start, sla_dias + pausa_dias) if start else None
-        elapsed_raw = _calendar_days_between(start, active_date) if start else 0
-        consumido = max(0, elapsed_raw - pausa_dias)
+        sla_dias = _calendar_days_between(start, committed) if start and committed else int(policy.get("sla_dias") or 10)
+        sla_dias = max(sla_dias, 1)
+        deadline = committed
+        consumido = _calendar_days_between(start, active_date) if start else 0
         restante = (deadline - active_date).days if deadline and not finalizado else None
         progreso = min(100, round((consumido / max(sla_dias, 1)) * 100)) if start else 0
 
-        if not start:
+        if not start or not committed:
             estado_sla = "SIN_INICIO"
         elif escalado and not reinicio and not finalizado:
             estado_sla = "PAUSADO"
@@ -1314,6 +1339,8 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
             "assignee": item.get("assignee"),
             "fecha_inicio_sla": start.isoformat() if start else None,
             "fecha_limite_sla": deadline.isoformat() if deadline else None,
+            "fecha_comprometida_cliente": committed.isoformat() if committed else None,
+            "fecha_fin_real": fin_real.isoformat() if fin_real else None,
             "fecha_entrega": entrega.isoformat() if entrega else None,
             "fecha_escalado": item.get("fecha_escalado"),
             "fecha_reinicio": item.get("fecha_reinicio"),
@@ -1883,13 +1910,10 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
     if not pi_row:
         return []
 
-    horas_por_dia: int = pi_row["horas_por_dia"]
-    festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id=$1", pi_row["id"])
-    festivos: set[date] = {f["fecha"] for f in festivos_rows}
-
     rows = await pool.fetch(f"""
         SELECT
             id, ticket_key, summary, assignee, assigned_team, fecha_asignacion,
+            fecha_finalizacion, fecha_finalizacion_inicial, fecha_entrega, status,
             horas_analisis_java::float,    horas_desarrollo_java::float,
             horas_pruebas_java::float,     horas_af_java::float,
             horas_analisis_cobol::float,   horas_desarrollo_cobol::float,
@@ -1899,7 +1923,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             responsable_parametria, responsable_qa,
             extra
         FROM {table}
-        WHERE fecha_asignacion IS NOT NULL
+        WHERE fecha_finalizacion_inicial IS NOT NULL
           AND pi_id = $1
         ORDER BY ticket_key NULLS LAST, summary
     """, pi_row["id"])
@@ -1909,7 +1933,11 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
 
     for row in rows:
         fecha_asig: date | None = row["fecha_asignacion"]
-        if not fecha_asig:
+        fecha_comprometida: date | None = row["fecha_finalizacion_inicial"]
+        fecha_fin_real: date | None = row["fecha_finalizacion"]
+        finalizado = bool(row["fecha_entrega"] or fecha_fin_real) or _is_finalizado_status(row["status"])
+        alerta = _calc_alerta_compromiso(today, fecha_asig, fecha_comprometida, fecha_fin_real, finalizado)
+        if not alerta:
             continue
 
         items = _planificacion_items_from_extra(row["extra"])
@@ -1932,20 +1960,6 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             qa = calidad
 
         dev_horas = max(java, cobol)
-        if dev_horas <= 0:
-            continue
-
-        dias_dev = math.ceil(dev_horas / horas_por_dia)
-        fecha_fin_dev = _add_working_days(fecha_asig, dias_dev, festivos)
-        alerta_dev = _calc_alerta(today, fecha_asig, fecha_fin_dev)
-
-        fecha_fin_qa_iso: str | None = None
-        alerta_qa: str | None = None
-        if qa > 0:
-            dias_qa = math.ceil(qa / horas_por_dia)
-            fecha_fin_qa = _add_working_days(fecha_fin_dev, dias_qa, festivos)
-            fecha_fin_qa_iso = fecha_fin_qa.isoformat()
-            alerta_qa = _calc_alerta(today, fecha_fin_dev, fecha_fin_qa)
 
         result.append({
             "id": row["id"],
@@ -1954,11 +1968,15 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
             "assignee": row["assignee"],
             "equipo": row["assigned_team"],
             "equipo_trabajo": ", ".join(_responsables_trabajo(row, items)) or None,
-            "fecha_asignacion": fecha_asig.isoformat(),
-            "fecha_fin_desarrollo": fecha_fin_dev.isoformat(),
-            "fecha_fin_qa": fecha_fin_qa_iso,
-            "alerta_desarrollo": alerta_dev,
-            "alerta_qa": alerta_qa,
+            "fecha_asignacion": fecha_asig.isoformat() if fecha_asig else None,
+            "fecha_fin_desarrollo": fecha_comprometida.isoformat() if fecha_comprometida else None,
+            "fecha_fin_qa": fecha_fin_real.isoformat() if fecha_fin_real else None,
+            "fecha_comprometida_cliente": fecha_comprometida.isoformat() if fecha_comprometida else None,
+            "fecha_fin_real": fecha_fin_real.isoformat() if fecha_fin_real else None,
+            "dias_para_compromiso": (fecha_comprometida - today).days if fecha_comprometida and not fecha_fin_real else None,
+            "dias_desviacion": (fecha_fin_real - fecha_comprometida).days if fecha_fin_real and fecha_comprometida else ((today - fecha_comprometida).days if fecha_comprometida and not finalizado and today > fecha_comprometida else None),
+            "alerta_desarrollo": alerta,
+            "alerta_qa": None,
             "java_horas": java,
             "cobol_horas": cobol,
             "gestion_horas": gestion,

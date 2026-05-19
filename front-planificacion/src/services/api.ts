@@ -215,6 +215,8 @@ export interface SlaTicket {
   assignee: string | null
   fecha_inicio_sla: string | null
   fecha_limite_sla: string | null
+  fecha_comprometida_cliente: string | null
+  fecha_fin_real: string | null
   fecha_entrega: string | null
   fecha_escalado: string | null
   fecha_reinicio: string | null

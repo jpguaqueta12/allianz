@@ -8,6 +8,7 @@ from datetime import date
 from app.db.queries import (
     _add_calendar_days,
     _calendar_days_between,
+    _calc_alerta_compromiso,
     _calcular_fecha_fin,
     _calcular_horas_asignadas_por_persona,
     _effective_reserva_estimacion,
@@ -88,6 +89,26 @@ class FechaPlanificacionTests(unittest.TestCase):
         )
 
         self.assertEqual(fecha_fin, date(2026, 5, 8))
+
+    def test_alerta_compromiso_vence_si_fin_real_supera_compromiso(self):
+        alerta = _calc_alerta_compromiso(
+            today=date(2026, 5, 19),
+            inicio=date(2026, 5, 1),
+            fecha_comprometida=date(2026, 5, 18),
+            fecha_fin_real=date(2026, 5, 19),
+        )
+
+        self.assertEqual(alerta, "roja")
+
+    def test_alerta_compromiso_en_tiempo_si_fin_real_no_supera_compromiso(self):
+        alerta = _calc_alerta_compromiso(
+            today=date(2026, 5, 19),
+            inicio=date(2026, 5, 1),
+            fecha_comprometida=date(2026, 5, 20),
+            fecha_fin_real=date(2026, 5, 20),
+        )
+
+        self.assertEqual(alerta, "verde")
 
     def test_etc_es_tiempo_restante_y_reinicio_suma_dias_calendario(self):
         etc = _calendar_days_between(date(2022, 1, 7), date(2022, 1, 8))

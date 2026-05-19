@@ -44,12 +44,12 @@ function downloadCsv(filename: string, rows: SlaTicket[]) {
   const headers = [
     'ticket_key', 'summary', 'status', 'estado_sla', 'sla_dias', 'consumido_dias',
     'restante_dias', 'pausa_dias', 'fecha_inicio_sla', 'fecha_limite_sla',
-    'fecha_entrega', 'fecha_escalado', 'fecha_reinicio', 'policy',
+    'fecha_comprometida_cliente', 'fecha_fin_real', 'fecha_entrega', 'fecha_escalado', 'fecha_reinicio', 'policy',
   ]
   const body = rows.map(ticket => [
     ticket.ticket_key, ticket.summary, ticket.status, ticket.estado_sla, ticket.sla_dias,
     ticket.consumido_dias, ticket.restante_dias, ticket.pausa_dias,
-    ticket.fecha_inicio_sla, ticket.fecha_limite_sla, ticket.fecha_entrega,
+    ticket.fecha_inicio_sla, ticket.fecha_limite_sla, ticket.fecha_comprometida_cliente, ticket.fecha_fin_real, ticket.fecha_entrega,
     ticket.fecha_escalado, ticket.fecha_reinicio, ticket.policy.nombre,
   ].map(csvCell).join(','))
   const blob = new Blob([[headers.map(csvCell).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -124,12 +124,12 @@ function SlaTable({ rows }: { rows: SlaTicket[] }) {
         <table className="corporate-table">
           <thead>
             <tr>
-              {['Key', 'SLA', 'Status ticket', 'Inicio', 'Límite', 'Entrega', 'Restante', 'Pausa', 'Progreso'].map(h => <th key={h}>{h}</th>)}
+              {['Key', 'SLA', 'Status ticket', 'Inicio', 'Compromiso cliente', 'F. Fin Real', 'Entrega', 'Restante', 'Pausa', 'Progreso'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-xs text-corporate-muted">Sin tickets para este filtro.</td></tr>
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-xs text-corporate-muted">Sin tickets para este filtro.</td></tr>
             ) : rows.slice(0, 80).map(ticket => (
               <tr key={ticket.id} className="hover:bg-corporate-surface">
                 <td>
@@ -140,6 +140,7 @@ function SlaTable({ rows }: { rows: SlaTicket[] }) {
                 <td><StatusBadge>{ticket.status ?? 'Sin status'}</StatusBadge></td>
                 <td className="font-mono text-xs">{ticket.fecha_inicio_sla ?? '-'}</td>
                 <td className="font-mono text-xs">{ticket.fecha_limite_sla ?? '-'}</td>
+                <td className="font-mono text-xs">{ticket.fecha_fin_real ?? '-'}</td>
                 <td className="font-mono text-xs">{ticket.fecha_entrega ?? '-'}</td>
                 <td className={clsx('text-right font-mono', (ticket.restante_dias ?? 0) < 0 && 'font-bold text-red-700')}>
                   {ticket.restante_dias ?? '-'}
@@ -251,13 +252,13 @@ export function SlaPanel({ modulo, piId, active }: Props) {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Cumplimiento" value={`${report.summary.cumplimiento_pct}%`} icon={ShieldCheck} tone={report.summary.cumplimiento_pct < 80 ? 'amber' : 'green'} detail={`${report.summary.cumplidos} cumplidos / ${report.summary.incumplidos} incumplidos`} />
-        <KpiCard label="Vencidos SLA" value={report.summary.vencidos} icon={XCircle} tone={report.summary.vencidos ? 'red' : 'green'} detail="Abiertos fuera de plazo" />
-        <KpiCard label="En riesgo" value={report.summary.en_riesgo} icon={FileWarning} tone={report.summary.en_riesgo ? 'amber' : 'neutral'} detail="Cerca del límite" />
+        <KpiCard label="Vencidos SLA" value={report.summary.vencidos} icon={XCircle} tone={report.summary.vencidos ? 'red' : 'green'} detail="Fuera del compromiso cliente" />
+        <KpiCard label="En riesgo" value={report.summary.en_riesgo} icon={FileWarning} tone={report.summary.en_riesgo ? 'amber' : 'neutral'} detail="Cerca del compromiso" />
         <KpiCard label="Pausados" value={report.summary.pausados} icon={PauseCircle} tone={report.summary.pausados ? 'amber' : 'neutral'} detail="Escalamiento activo" />
         <KpiCard label="En tiempo" value={report.summary.por_estado.EN_TIEMPO ?? 0} icon={Clock3} tone="green" detail="Abiertos sanos" />
-        <KpiCard label="Sin inicio" value={report.summary.sin_inicio} icon={AlertTriangle} tone={report.summary.sin_inicio ? 'amber' : 'neutral'} detail="Sin fecha base SLA" />
-        <KpiCard label="Cerrados cumplidos" value={report.summary.cumplidos} icon={CheckCircle2} tone="green" detail="Entregados dentro de SLA" />
-        <KpiCard label="Cerrados incumplidos" value={report.summary.incumplidos} icon={XCircle} tone={report.summary.incumplidos ? 'red' : 'neutral'} detail="Entregados fuera de SLA" />
+        <KpiCard label="Sin inicio" value={report.summary.sin_inicio} icon={AlertTriangle} tone={report.summary.sin_inicio ? 'amber' : 'neutral'} detail="Sin compromiso o inicio" />
+        <KpiCard label="Cerrados cumplidos" value={report.summary.cumplidos} icon={CheckCircle2} tone="green" detail="Fin real dentro del compromiso" />
+        <KpiCard label="Cerrados incumplidos" value={report.summary.incumplidos} icon={XCircle} tone={report.summary.incumplidos ? 'red' : 'neutral'} detail="Fin real fuera del compromiso" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">

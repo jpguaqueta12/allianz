@@ -144,9 +144,13 @@ export interface AlertaItem {
   assignee: string | null
   equipo: string | null
   equipo_trabajo: string | null
-  fecha_asignacion: string
-  fecha_fin_desarrollo: string
+  fecha_asignacion: string | null
+  fecha_fin_desarrollo: string | null
   fecha_fin_qa: string | null
+  fecha_comprometida_cliente?: string | null
+  fecha_fin_real?: string | null
+  dias_para_compromiso?: number | null
+  dias_desviacion?: number | null
   alerta_desarrollo: 'verde' | 'amarilla' | 'roja'
   alerta_qa: 'verde' | 'amarilla' | 'roja' | null
   java_horas: number

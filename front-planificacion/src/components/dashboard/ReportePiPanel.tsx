@@ -50,6 +50,19 @@ function daysBetween(from: Date, to: Date) {
   return Math.round((to.getTime() - from.getTime()) / 86400000)
 }
 
+function vencimientoDias(item: BacklogItem, today: Date) {
+  const compromiso = parseDate(item.fecha_finalizacion_inicial)
+  if (!compromiso) return null
+  const finReal = parseDate(item.fecha_finalizacion)
+  if (finReal) {
+    const dias = daysBetween(compromiso, finReal)
+    return dias > 0 ? dias : null
+  }
+  if (item.fecha_entrega || isFinalizado(item.status)) return null
+  const dias = daysBetween(compromiso, today)
+  return dias > 0 ? dias : null
+}
+
 function hoursByTech(item: BacklogItem) {
   const result = { java: 0, cobol: 0, gestion: 0, calidad: 0 }
   if (item.planificacion_items?.length) {
@@ -112,12 +125,12 @@ function formatEtc(etc: number | null | undefined, piActivo?: PiInfo | null) {
 function downloadCsv(filename: string, rows: BacklogItem[], piActivo?: PiInfo | null) {
   const headers = [
     'ticket_key', 'summary', 'status', 'issue_type', 'assignee', 'responsables',
-    'total_horas', 'fecha_asignacion', 'fecha_finalizacion', 'fecha_entrega',
+    'total_horas', 'fecha_asignacion', 'fecha_comprometida_cliente', 'fecha_fin_real', 'fecha_entrega',
     'fecha_escalado', 'fecha_reinicio', 'etc_dias_horas',
   ]
   const body = rows.map(item => [
     item.ticket_key, item.summary, item.status, item.issue_type, item.assignee, ticketResponsible(item),
-    item.total_horas, item.fecha_asignacion, item.fecha_finalizacion, item.fecha_entrega,
+    item.total_horas, item.fecha_asignacion, item.fecha_finalizacion_inicial, item.fecha_finalizacion, item.fecha_entrega,
     item.fecha_escalado, item.fecha_reinicio, formatEtc(item.etc, piActivo),
   ].map(csvCell).join(','))
   const csv = [headers.map(csvCell).join(','), ...body].join('\n')
@@ -246,7 +259,8 @@ function RiskList({
             </div>
             <div className="shrink-0 text-right">
               <StatusBadge tone={item.fecha_finalizacion ? 'red' : 'amber'}>{item.status ?? 'Sin status'}</StatusBadge>
-              <p className="mt-1 font-mono text-[11px] text-corporate-muted">{item.fecha_finalizacion ?? 'Sin fin'}</p>
+              <p className="mt-1 font-mono text-[11px] text-corporate-muted">Comp. {item.fecha_finalizacion_inicial ?? '—'}</p>
+              <p className="font-mono text-[11px] text-corporate-muted">Real {item.fecha_finalizacion ?? '—'}</p>
             </div>
           </div>
         ))}
@@ -300,12 +314,12 @@ function DetailTable({ rows, piActivo }: { rows: BacklogItem[]; piActivo?: PiInf
         <table className="corporate-table">
           <thead>
             <tr>
-              {['Key', 'Status', 'Responsables', 'Horas', 'F. fin real', 'Entrega', 'Escalado', 'ETC'].map(h => <th key={h}>{h}</th>)}
+              {['Key', 'Status', 'Responsables', 'Horas', 'Compromiso cliente', 'F. fin real', 'Entrega', 'Escalado', 'ETC'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-xs text-corporate-muted">Sin tickets para el filtro actual.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-xs text-corporate-muted">Sin tickets para el filtro actual.</td></tr>
             ) : rows.slice(0, 40).map(item => (
               <tr key={item.id} className="hover:bg-corporate-surface">
                 <td>
@@ -315,6 +329,7 @@ function DetailTable({ rows, piActivo }: { rows: BacklogItem[]; piActivo?: PiInf
                 <td><StatusBadge>{item.status ?? 'Sin status'}</StatusBadge></td>
                 <td className="max-w-[220px] truncate text-xs" title={ticketResponsible(item)}>{ticketResponsible(item) || '—'}</td>
                 <td className="text-right font-mono">{item.total_horas ?? '—'}</td>
+                <td className="font-mono text-xs">{item.fecha_finalizacion_inicial ?? '—'}</td>
                 <td className="font-mono text-xs">{item.fecha_finalizacion ?? '—'}</td>
                 <td className="font-mono text-xs">{item.fecha_entrega ?? '—'}</td>
                 <td className="font-mono text-xs">{item.fecha_escalado ?? '—'}</td>
@@ -361,11 +376,8 @@ export function ReportePiPanel({ modulo, piId, piActivo, active, capacidad }: Pr
     const planificados = items.filter(item => (item.total_horas ?? 0) > 0)
     const finalizados = items.filter(item => item.fecha_entrega || isFinalizado(item.status))
     const vencidos = items
-      .filter(item => {
-        const fin = parseDate(item.fecha_finalizacion)
-        return fin && fin < today && !item.fecha_entrega && !isFinalizado(item.status)
-      })
-      .sort((a, b) => daysBetween(parseDate(a.fecha_finalizacion)!, today) < daysBetween(parseDate(b.fecha_finalizacion)!, today) ? 1 : -1)
+      .filter(item => vencimientoDias(item, today) != null)
+      .sort((a, b) => (vencimientoDias(b, today) ?? 0) - (vencimientoDias(a, today) ?? 0))
     const escaladosActivos = items.filter(item => item.fecha_escalado && !item.fecha_reinicio)
     const sinAsignacion = items.filter(item => !item.fecha_asignacion)
     const sinPlanificacion = items.filter(item => (item.total_horas ?? 0) <= 0)
@@ -508,7 +520,7 @@ export function ReportePiPanel({ modulo, piId, piActivo, active, capacidad }: Pr
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiAction label="Tickets PI" value={report.total} icon={FileText} tone="blue" detail={`${report.planificados.length} planificados`} onClick={() => setFilter({ type: 'all', label: 'Todos los tickets' })} />
-        <KpiAction label="Vencidos" value={report.vencidos.length} icon={CalendarClock} tone={report.vencidos.length ? 'red' : 'green'} detail={`${report.sinFinalizacion.length} sin fecha final`} onClick={() => setFilter({ type: 'vencidos', label: 'Tickets vencidos' })} />
+        <KpiAction label="Vencidos" value={report.vencidos.length} icon={CalendarClock} tone={report.vencidos.length ? 'red' : 'green'} detail="Fin real supera compromiso" onClick={() => setFilter({ type: 'vencidos', label: 'Tickets vencidos' })} />
         <KpiAction label="Escalados activos" value={report.escaladosActivos.length} icon={GitBranch} tone={report.escaladosActivos.length ? 'amber' : 'neutral'} detail={`${report.conEtc.length} con ETC`} onClick={() => setFilter({ type: 'escalados', label: 'Escalados activos' })} />
         <KpiAction label="Finalizados" value={report.finalizados.length} icon={CheckCircle2} tone="green" detail={`${report.total ? Math.round((report.finalizados.length / report.total) * 100) : 0}% del backlog`} onClick={() => setFilter({ type: 'finalizados', label: 'Tickets finalizados' })} />
         <KpiCard label="Salud PI" value={`${report.score}%`} icon={Target} tone={report.score < 60 ? 'red' : report.score < 80 ? 'amber' : 'green'} detail={report.score < 80 ? 'Requiere atención' : 'Sin riesgo crítico'} />
@@ -563,7 +575,7 @@ export function ReportePiPanel({ modulo, piId, piActivo, active, capacidad }: Pr
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <RiskList title="Tickets más vencidos" rows={report.vencidos} empty="No hay tickets vencidos sin entrega." onOpen={() => setFilter({ type: 'vencidos', label: 'Tickets vencidos' })} />
+        <RiskList title="Tickets más vencidos" rows={report.vencidos} empty="No hay tickets vencidos frente al compromiso cliente." onOpen={() => setFilter({ type: 'vencidos', label: 'Tickets vencidos' })} />
         <RiskList title="Escalados activos" rows={report.escaladosActivos} empty="No hay tickets escalados activos." onOpen={() => setFilter({ type: 'escalados', label: 'Escalados activos' })} />
         <RiskList title="Sin fecha de finalización" rows={report.sinFinalizacion} empty="Todos los tickets planificados tienen fecha final." onOpen={() => setFilter({ type: 'sin_finalizacion', label: 'Sin fecha de finalización' })} />
         <RiskList title="Pasan al siguiente PI" rows={report.siguientePi} empty="Todos los tickets caben dentro del PI actual." onOpen={() => setFilter({ type: 'siguiente_pi', label: 'Pasan al siguiente PI' })} />

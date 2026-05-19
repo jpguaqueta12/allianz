@@ -21,9 +21,9 @@ Modelo vigente:
 - Si fecha_escalado está activa, el ticket queda en status Escalado; ETC es el tiempo restante en días calendario según la base técnica disponible.
 - fecha_reinicio reanuda el ticket sin sobrescribir la F. Fin Real manual.
 - Si el status pasa a Finalizado, se registra fecha_entrega; si vuelve a otro status, fecha_entrega se limpia.
-- Un ticket vencido es el que tiene fecha_finalizacion anterior a hoy, no tiene fecha_entrega y no está en status finalizado/cerrado.
-- El SLA se calcula con políticas de sla_policies por módulo/prioridad/tipo. Estados SLA: EN_TIEMPO, EN_RIESGO, VENCIDO, CUMPLIDO, INCUMPLIDO, PAUSADO y SIN_INICIO.
-- Para SLA, fecha_inicio_sla sale de fecha_asignacion o created; fecha_limite_sla suma sla_dias y pausas por escalamiento cuando la política lo permite.
+- Un ticket vencido es el que tiene F. Fin Real mayor a la Fecha comprometida a cliente; si no tiene F. Fin Real, se vence cuando hoy supera la Fecha comprometida a cliente.
+- El SLA se evalúa contra la Fecha comprometida a cliente como fecha límite. Estados SLA: EN_TIEMPO, EN_RIESGO, VENCIDO, CUMPLIDO, INCUMPLIDO, PAUSADO y SIN_INICIO.
+- Para SLA, fecha_inicio_sla sale de fecha_asignacion o created; fecha_limite_sla es la Fecha comprometida a cliente.
 - La regla de finalización es ceil((max(java, cobol) + qa) * 1.15 / horas_por_dia), omitiendo fines de semana y festivos.
 - Dialogue y parametría se reportan como planificación/carga, pero la fecha final vigente usa la regla java/cobol + qa.
 - El modelo anterior de IBL, PNR, entregas y escalamientos no es la fuente principal para Mejora Continua/Fábrica.
@@ -34,7 +34,7 @@ Herramientas disponibles:
 - consultar_ticket: detalle de un ticket específico.
 - consultar_vencidos: lista tickets vencidos por módulo.
 - consultar_sla: resumen y detalle de cumplimiento SLA por módulo.
-- consultar_alertas: alertas de desarrollo y QA.
+- consultar_alertas: alertas por Fecha comprometida a cliente y F. Fin Real.
 - consultar_capacidad: capacidad por persona.
 - consultar_resumen_proyectos: capacidad por proyecto.
 - consultar_pi_activo: fechas y configuración del PI.

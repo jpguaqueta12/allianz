@@ -137,7 +137,6 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
   )
 
   const devItems = items.filter(i => i.alerta_desarrollo != null)
-  const qaItems  = items.filter(i => i.alerta_qa != null)
   const visible  = items.filter(i => matchFiltro(i, filtro))
   const equipoAsignado = (item: AlertaItem) =>
     item.equipo ?? (item as AlertaItem & { assigned_team?: string | null }).assigned_team ?? null
@@ -157,8 +156,7 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
     <div className="space-y-4">
       {/* resumen */}
       <div className="flex flex-wrap gap-3">
-        <SummaryGroup title="Alertas — Desarrollo" items={devItems} field="alerta_desarrollo" />
-        <SummaryGroup title="Alertas — QA"         items={qaItems}  field="alerta_qa" />
+        <SummaryGroup title="Alertas — Compromiso cliente" items={devItems} field="alerta_desarrollo" />
       </div>
 
       {/* filtros + refresh */}
@@ -213,10 +211,10 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                   <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                   <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo asignado</th>
                   <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Inicio</th>
-                  <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fin Desarrollo</th>
-                  <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta Dev</th>
-                  <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fin QA</th>
-                  <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta QA</th>
+                  <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Compromiso cliente</th>
+                  <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta</th>
+                  <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
+                  <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Desviación</th>
                   <th className="min-w-[170px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Horas (J / C / G / Cal)</th>
                   <th className="min-w-[180px] px-3 py-3 text-left font-semibold whitespace-nowrap">Equipo trabajo</th>
                 </tr>
@@ -248,19 +246,19 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                         </span>
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                        {item.fecha_asignacion}
+                        {item.fecha_asignacion ?? '—'}
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap font-medium">
-                        {item.fecha_fin_desarrollo}
+                        {item.fecha_comprometida_cliente ?? item.fecha_fin_desarrollo ?? '—'}
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 text-center">
                         <NivelBadge nivel={item.alerta_desarrollo} />
                       </td>
                       <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                        {item.fecha_fin_qa ?? '—'}
+                        {item.fecha_fin_real ?? item.fecha_fin_qa ?? '—'}
                       </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30 text-center">
-                        <NivelBadge nivel={item.alerta_qa} />
+                      <td className={clsx('px-3 py-2 border-r border-corporate-line/30 text-right font-mono text-[11px]', (item.dias_desviacion ?? 0) > 0 ? 'font-semibold text-red-700' : 'text-corporate-muted')}>
+                        {item.dias_desviacion != null ? `${item.dias_desviacion}d` : item.dias_para_compromiso != null ? `${item.dias_para_compromiso}d` : '—'}
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-[11px] whitespace-nowrap text-corporate-muted border-r border-corporate-line/30">
                         {item.java_horas > 0 && <span className="text-blue-600">J:{item.java_horas}h</span>}

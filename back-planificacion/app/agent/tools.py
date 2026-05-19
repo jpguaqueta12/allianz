@@ -112,6 +112,7 @@ def _compact_backlog_item(item: dict) -> dict:
         "total_horas": item.get("total_horas"),
         "fecha_asignacion": item.get("fecha_asignacion"),
         "fecha_finalizacion": item.get("fecha_finalizacion"),
+        "fecha_finalizacion_inicial": item.get("fecha_finalizacion_inicial"),
         "fecha_escalado": item.get("fecha_escalado"),
         "fecha_reinicio": item.get("fecha_reinicio"),
         "fecha_entrega": item.get("fecha_entrega"),
@@ -160,18 +161,27 @@ def _parse_date(value: object) -> Optional[date]:
 
 
 def _is_vencido(item: dict, today: date) -> bool:
-    fecha_fin = _parse_date(item.get("fecha_finalizacion"))
-    if not fecha_fin or fecha_fin >= today:
+    compromiso = _parse_date(item.get("fecha_finalizacion_inicial"))
+    if not compromiso:
         return False
+    fecha_fin = _parse_date(item.get("fecha_finalizacion"))
+    if fecha_fin:
+        return fecha_fin > compromiso
     if item.get("fecha_entrega") or _is_finalizado_status(item.get("status")):
         return False
-    return True
+    return today > compromiso
 
 
 def _compact_vencido_item(item: dict, today: date) -> dict:
     compact = _compact_backlog_item(item)
+    compromiso = _parse_date(item.get("fecha_finalizacion_inicial"))
     fecha_fin = _parse_date(item.get("fecha_finalizacion"))
-    compact["dias_vencido"] = (today - fecha_fin).days if fecha_fin else None
+    if compromiso and fecha_fin:
+        compact["dias_vencido"] = (fecha_fin - compromiso).days
+    elif compromiso:
+        compact["dias_vencido"] = (today - compromiso).days
+    else:
+        compact["dias_vencido"] = None
     return compact
 
 
@@ -284,7 +294,7 @@ async def consultar_ticket(ticket_key: str, modulo: Modulo = "TODOS") -> str:
 
 @tool
 async def consultar_alertas(modulo: Modulo = "MEJORA_CONTINUA") -> str:
-    """Consulta alertas de desarrollo y QA calculadas desde fecha_asignacion, horas planificadas, festivos y PI activo."""
+    """Consulta alertas calculadas contra la fecha comprometida a cliente y la F. Fin Real."""
     mod = _normalize_modulo(modulo)
     pool = get_pool()
     if mod == "TODOS":
@@ -297,7 +307,7 @@ async def consultar_alertas(modulo: Modulo = "MEJORA_CONTINUA") -> str:
 
 @tool
 async def consultar_vencidos(modulo: Modulo = "MEJORA_CONTINUA", limite: int = 50) -> str:
-    """Lista tickets vencidos: fecha_finalizacion anterior a hoy, sin fecha_entrega y sin status finalizado/cerrado."""
+    """Lista tickets vencidos: F. Fin Real mayor a la fecha comprometida a cliente, o abiertos con compromiso vencido."""
     mod = _normalize_modulo(modulo)
     modules = ["MEJORA_CONTINUA", "FABRICA"] if mod == "TODOS" else [mod]
     pool = get_pool()
