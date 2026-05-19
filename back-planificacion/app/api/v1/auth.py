@@ -1,5 +1,4 @@
 from __future__ import annotations
-from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import bcrypt
@@ -48,9 +47,8 @@ async def login(body: LoginRequest) -> TokenResponse:
             detail="Credenciales incorrectas",
         )
 
-    expire = datetime.now(timezone.utc) + timedelta(minutes=s.jwt_expire_minutes)
     token = jwt.encode(
-        {"sub": row["rol"], "exp": expire},
+        {"sub": row["rol"]},
         s.secret_key,
         algorithm=s.jwt_algorithm,
     )

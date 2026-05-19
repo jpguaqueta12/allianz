@@ -27,47 +27,12 @@ const navItems = [
 
 // Ruta protegida: cualquier usuario autenticado
 function ProtectedRoute({ children, superuserOnly = false }: { children: React.ReactNode; superuserOnly?: boolean }) {
-  const { isAuthenticated, isSuperUser, isSessionExpired } = useAuthStore()
-  if (!isAuthenticated || isSessionExpired()) {
+  const { isAuthenticated, isSuperUser } = useAuthStore()
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
   if (superuserOnly && !isSuperUser) return <Navigate to="/" replace />
   return <>{children}</>
-}
-
-function SessionTimeout() {
-  const { isAuthenticated, expiresAt, logout, isSessionExpired } = useAuthStore()
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    if (!isAuthenticated) return
-
-    const expire = () => {
-      logout()
-      navigate('/login', { replace: true })
-    }
-
-    if (isSessionExpired()) {
-      expire()
-      return
-    }
-
-    const timeout = window.setTimeout(expire, Math.max(0, (expiresAt ?? 0) - Date.now()))
-    const checkSession = () => {
-      if (isSessionExpired()) expire()
-    }
-
-    window.addEventListener('focus', checkSession)
-    document.addEventListener('visibilitychange', checkSession)
-
-    return () => {
-      window.clearTimeout(timeout)
-      window.removeEventListener('focus', checkSession)
-      document.removeEventListener('visibilitychange', checkSession)
-    }
-  }, [expiresAt, isAuthenticated, isSessionExpired, logout, navigate])
-
-  return null
 }
 
 function PageLoader() {
@@ -195,25 +160,20 @@ function Layout() {
 }
 
 export default function App() {
-  const { isAuthenticated, token, logout, setRole, isSessionExpired } = useAuthStore()
+  const { isAuthenticated, token, logout, setRole } = useAuthStore()
 
   useEffect(() => {
     if (!isAuthenticated || !token) return
-    if (isSessionExpired()) {
-      logout()
-      return
-    }
     verifyToken().then(({ valid, role }) => {
       if (!valid) logout()
       else if (role) setRole(role)
     }).catch(() => {
       logout()
     })
-  }, [isAuthenticated, isSessionExpired, logout, setRole, token])
+  }, [isAuthenticated, logout, setRole, token])
 
   return (
     <BrowserRouter>
-      <SessionTimeout />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route

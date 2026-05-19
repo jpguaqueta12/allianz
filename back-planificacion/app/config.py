@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     super_user: str = "admin"
     super_password_hash: str = "$2b$12$RafloR0804BkiERwgOSEm.fNmmktga9Cnwoo9js/3tEjR1EsZAOiK"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 480  # 8 horas
 
     # Usuario normal (solo lectura)
     normal_user: str = "planificador"
