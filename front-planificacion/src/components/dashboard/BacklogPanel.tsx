@@ -295,6 +295,7 @@ const STATUS_OPTIONS = [
   'Escalado',
   'Finalizado',
 ]
+const PLAN_MODAL_STATUS_OPTIONS = ['In Progress', 'Cancelled', 'Done', 'Blocked']
 
 function Badge({ value, colorMap }: { value: string | null; colorMap: Record<string, string> }) {
   if (!value) return <span className="text-corporate-muted text-xs">—</span>
@@ -370,6 +371,11 @@ type Fase = 'desarrollo'
 const TAREA_OPTIONS = ['Task', 'Bug', 'Historia', 'Soporte', 'Evolutivo', 'Estimación']
 const SUBTAREA_OPTIONS = ['Versionamiento', 'Devolución', 'Estabilización', 'Soporte', 'Evolutivo', 'Estimación', 'Desarrollo', 'QA']
 
+function optionsWithCurrent(options: string[], current?: string | null): string[] {
+  const value = current?.trim()
+  return value && !options.includes(value) ? [value, ...options] : options
+}
+
 const TECHS: { id: Tech; label: string; color: string; headerBg: string; techMatch: 'JAVA' | 'COBOL' | 'GESTION' | 'CALIDAD' }[] = [
   { id: 'java',       label: 'JAVA',       color: 'text-blue-700',   headerBg: 'bg-blue-600',   techMatch: 'JAVA'  },
   { id: 'cobol',      label: 'COBOL',      color: 'text-emerald-700',headerBg: 'bg-emerald-600',techMatch: 'COBOL' },
@@ -430,6 +436,11 @@ const PLAN_VACÍO: PlanificacionData = {
   horas_af_dialogue: null, horas_af_parametria: null, horas_af_qa: null,
   planificacion_items: [],
   fecha_asignacion: null,
+}
+
+type PlanificacionSavedData = PlanificacionData & {
+  status?: string | null
+  fecha_entrega?: string | null
 }
 
 function itemToPlan(item: BacklogItem): PlanificacionData {
@@ -571,7 +582,7 @@ interface ModalProps {
   item: BacklogItem
   modulo: string
   onClose: () => void
-  onSaved: (updated: PlanificacionData) => void
+  onSaved: (updated: PlanificacionSavedData) => void
   onCapacityRefresh?: () => void | Promise<void>
   piId?: number | null
 }
@@ -584,12 +595,14 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
   const [confirm, setConfirm]             = useState(false)
   const [error, setError]                 = useState<string | null>(null)
   const [fechaAsignacion, setFechaAsignacion] = useState<string | null>(item.fecha_asignacion ?? null)
+  const [status, setStatus]               = useState<string>(item.status ?? '')
 
   useEffect(() => {
     getResponsables(modulo, piId).then(setPersonas).catch(() => {})
   }, [modulo, piId])
 
   function updateRow(id: string, patch: Partial<PlanificacionRow>) {
+    setError(null)
     setRows(prev => prev.map(row => {
       if (row.id !== id) return row
       const next = { ...row, ...patch }
@@ -616,13 +629,19 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
     setSaving(true); setError(null); setConfirm(false)
     try {
       await updatePlanificacion(modulo, item.id, data)
+      let statusPatch: { status?: string | null; fecha_entrega?: string | null } = {}
+      const nextStatus = status.trim()
+      if (nextStatus && nextStatus !== (item.status ?? '')) {
+        const res = await updateBacklogStatus(modulo, item.id, nextStatus)
+        statusPatch = { status: res.status, fecha_entrega: res.fecha_entrega }
+      }
       try {
         await onCapacityRefresh?.()
       } catch {
         // La planificación ya quedó guardada; el refresco periódico corregirá la capacidad si falla aquí.
       }
       setSaved(true)
-      setTimeout(() => { onSaved(data); onClose() }, 700)
+      setTimeout(() => { onSaved({ ...data, ...statusPatch }); onClose() }, 700)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error guardando')
     } finally {
@@ -648,6 +667,8 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
     handleSave({ ...rowsToPlan(activeRows), fecha_asignacion: fechaAsignacion })
   }
 
+  const statusOptions = optionsWithCurrent(PLAN_MODAL_STATUS_OPTIONS, status)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl flex flex-col max-h-[92vh]">
@@ -663,30 +684,46 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
           </button>
         </div>
 
-        {/* fecha asignación */}
+        {/* fecha asignación y status */}
         <div className="border-b border-corporate-line bg-blue-50/60 px-6 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
-            Fecha de asignación de inicio
-          </p>
-          <div className="flex items-center gap-3">
-            <CalendarDays size={15} className="shrink-0 text-allianz-blue" />
-            <input
-              type="date"
-              value={fechaAsignacion ?? ''}
-              onChange={e => setFechaAsignacion(e.target.value || null)}
-              className="rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
-            />
-            {fechaAsignacion ? (
-              <button
-                type="button"
-                onClick={() => setFechaAsignacion(null)}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors"
+          <div className="grid gap-3 md:grid-cols-[1fr_240px]">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
+                Fecha de asignación de inicio
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <CalendarDays size={15} className="shrink-0 text-allianz-blue" />
+                <input
+                  type="date"
+                  value={fechaAsignacion ?? ''}
+                  onChange={e => setFechaAsignacion(e.target.value || null)}
+                  className="rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
+                />
+                {fechaAsignacion ? (
+                  <button
+                    type="button"
+                    onClick={() => setFechaAsignacion(null)}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    <X size={12} /> Quitar fecha
+                  </button>
+                ) : (
+                  <span className="text-xs text-corporate-muted">Sin fecha asignada</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
+                Status
+              </p>
+              <select
+                value={status}
+                onChange={e => { setStatus(e.target.value); setError(null) }}
+                className="w-full rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
               >
-                <X size={12} /> Quitar fecha
-              </button>
-            ) : (
-              <span className="text-xs text-corporate-muted">Sin fecha asignada</span>
-            )}
+                {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -740,23 +777,29 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 <tbody>
                   {rows.map((row, idx) => {
                     const responsables = responsablesForPerfil(personas, row.perfil)
+                    const tareaOptions = optionsWithCurrent(TAREA_OPTIONS, row.tarea)
+                    const subtareaOptions = optionsWithCurrent(SUBTAREA_OPTIONS, row.subtarea)
                     return (
                       <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
                         <td className="border-b border-corporate-line px-3 py-2">
-                          <input
-                            list="tarea-options"
+                          <select
                             value={row.tarea ?? ''}
                             onChange={e => updateRow(row.id, { tarea: e.target.value || null })}
                             className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-                          />
+                          >
+                            <option value="">Seleccionar tarea</option>
+                            {tareaOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
                         </td>
                         <td className="border-b border-corporate-line px-3 py-2">
-                          <input
-                            list="subtarea-options"
+                          <select
                             value={row.subtarea ?? ''}
                             onChange={e => updateRow(row.id, { subtarea: e.target.value || null })}
                             className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-                          />
+                          >
+                            <option value="">Seleccionar subtarea</option>
+                            {subtareaOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
                         </td>
                         <td className="border-b border-corporate-line px-3 py-2">
                           <select
@@ -839,12 +882,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                   </tr>
                 </tfoot>
               </table>
-              <datalist id="tarea-options">
-                {TAREA_OPTIONS.map(opt => <option key={opt} value={opt} />)}
-              </datalist>
-              <datalist id="subtarea-options">
-                {SUBTAREA_OPTIONS.map(opt => <option key={opt} value={opt} />)}
-              </datalist>
             </div>
           </div>
 
@@ -1586,7 +1623,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => { if (active && !loaded) load() }, [active, loaded, modulo, piId])
 
-  function handleSaved(updated: PlanificacionData) {
+  function handleSaved(updated: PlanificacionSavedData) {
     if (!editing) return
     const total = updated.planificacion_items?.length
       ? updated.planificacion_items.reduce((s, row) => s + (row.horas ?? 0), 0)
