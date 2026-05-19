@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateEscalamiento, updateBacklogStatus, getResponsables,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -129,7 +129,7 @@ function formatEtc(etc: number, piActivo?: PiInfo | null, long = false): string 
 }
 
 function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
-  const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
+  const fin = item.fecha_finalizacion
   if (!fin || !piActivo?.fecha_fin) return 'Normal'
   return fin > piActivo.fecha_fin ? 'Debe pasar al siguiente PI' : 'Normal'
 }
@@ -145,7 +145,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     'Sprint', 'Labels', 'Components', 'Fix Version', 'Release Notes',
     'Resolución', 'Created', 'Updated',
     // planificación
-    'F. Asignación', 'F. Fin Inicial', 'F. Finalización', 'F. Entrega',
+    'F. Asignación', 'F. Fin Inicial', 'F. Fin Real', 'F. Entrega',
     'ETC (días / horas)', 'PRN',
     // escalados
     'Escalados (hist.)',
@@ -164,7 +164,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
 
   const rows = items.map(item => {
     const fechaFinInicial = item.fecha_finalizacion_inicial ?? calcularFechaFinInicial(item, piActivo) ?? ''
-    const fechaFin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo) ?? ''
+    const fechaFin = item.fecha_finalizacion ?? ''
     const etc = calcularEtc(item, piActivo)
     const prn = calcularPrn(item, piActivo)
 
@@ -369,7 +369,7 @@ type Tech = 'java' | 'cobol' | 'gestion' | 'calidad'
 type Fase = 'desarrollo'
 
 const TAREA_OPTIONS = ['Task', 'Bug', 'Historia', 'Soporte', 'Evolutivo', 'Estimación']
-const SUBTAREA_OPTIONS = ['Versionamiento', 'Devolución', 'Estabilización', 'Soporte', 'Evolutivo', 'Estimación', 'Desarrollo', 'QA']
+const SUBTAREA_OPTIONS = ['Desarrollo', 'Devolución', 'Estabilización', 'Estimación', 'Evolutivo', 'QA', 'Soporte', 'Versionamiento']
 
 function optionsWithCurrent(options: string[], current?: string | null): string[] {
   const value = current?.trim()
@@ -1043,7 +1043,7 @@ function BacklogDetailModal({
             <DetailField label="Tipo" value={<Badge value={item.issue_type} colorMap={{}} />} />
             <StatusSelectField item={item} modulo={modulo} statusOptions={statusOptions} onSaved={onSaved} />
             <DetailField label="Fecha Asignación" value={item.fecha_asignacion ?? null} />
-            <DetailField label="Fecha Finalización" value={item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)} />
+            <DetailField label="F. Fin Real" value={item.fecha_finalizacion ?? null} />
             <DetailField label="Fecha Entrega" value={item.fecha_entrega ?? null} />
             <DetailField label="Fecha Escalado" value={item.fecha_escalado ?? null} />
             <DetailField label="Fecha Reinicio" value={item.fecha_reinicio ?? null} />
@@ -1179,6 +1179,79 @@ function FechaAsignacionCell({
         className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-allianz-blue focus:bg-white focus:outline-none disabled:opacity-50"
       />
       {saving && <Loader2 size={12} className="animate-spin text-allianz-blue shrink-0" />}
+    </div>
+  )
+}
+
+function FechaFinalizacionCell({
+  item,
+  modulo,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  onSaved: (fecha: string | null) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [value, setValue]   = useState(item.fecha_finalizacion ?? '')
+  const valueRef  = useRef(item.fecha_finalizacion ?? '')
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    if (savingRef.current) return
+    const v = item.fecha_finalizacion ?? ''
+    setValue(v)
+    valueRef.current = v
+  }, [item.fecha_finalizacion])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setValue(e.target.value)
+    valueRef.current = e.target.value
+  }
+
+  function commit() {
+    const trimmed = valueRef.current.trim()
+    const current = item.fecha_finalizacion ?? ''
+    if (trimmed === current) return
+
+    if (!trimmed) {
+      savingRef.current = true
+      setSaving(true)
+      updateFechaFinalizacion(modulo, item.id, null)
+        .then(res => onSaved(res.fecha_finalizacion))
+        .catch(() => { setValue(current); valueRef.current = current })
+        .finally(() => { savingRef.current = false; setSaving(false) })
+      return
+    }
+
+    if (!isValidDate(trimmed)) {
+      setValue(current)
+      valueRef.current = current
+      return
+    }
+
+    savingRef.current = true
+    setSaving(true)
+    updateFechaFinalizacion(modulo, item.id, trimmed)
+      .then(res => onSaved(res.fecha_finalizacion))
+      .catch(() => { setValue(current); valueRef.current = current })
+      .finally(() => { savingRef.current = false; setSaving(false) })
+  }
+
+  return (
+    <div className="flex items-center gap-1 px-1">
+      <CalendarDays size={12} className={clsx('shrink-0', value ? 'text-emerald-600' : 'text-corporate-muted')} />
+      <input
+        type="text"
+        value={value}
+        placeholder="AAAA-MM-DD"
+        onChange={handleChange}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+        disabled={saving}
+        className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-emerald-500 focus:bg-white focus:outline-none disabled:opacity-50"
+      />
+      {saving && <Loader2 size={12} className="animate-spin text-emerald-600 shrink-0" />}
     </div>
   )
 }
@@ -1631,7 +1704,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
     setItems(prev => prev.map(it => {
       if (it.id !== editing.id) return it
       const merged = { ...it, ...updated, total_horas: total || null, fecha_asignacion: updated.fecha_asignacion ?? null }
-      return { ...merged, fecha_finalizacion: calcularFechaFin(merged, piActivo) }
+      return merged
     }))
   }
 
@@ -1825,7 +1898,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Inicial</th>
-                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Finalización</th>
+                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
                 <th className="min-w-[90px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">PRN</th>
                 <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
                 <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
@@ -1868,7 +1941,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                           setItems(prev => prev.map(it => {
                             if (it.id !== item.id) return it
                             const updated = { ...it, fecha_asignacion: fecha, fecha_finalizacion_inicial: fechaFinalizacionInicial ?? it.fecha_finalizacion_inicial }
-                            return { ...updated, fecha_finalizacion: fechaFinalizacion ?? calcularFechaFin(updated, piActivo) }
+                            return { ...updated, fecha_finalizacion: fechaFinalizacion }
                           }))
                         }
                       />
@@ -1882,12 +1955,13 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       })()}
                     </td>
                     <td className="px-3 py-2 border-r border-corporate-line/30">
-                      {(() => {
-                        const fin = item.fecha_finalizacion ?? calcularFechaFin(item, piActivo)
-                        return fin
-                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CalendarDays size={11} className="shrink-0" />{fin}</span>
-                          : <span className="text-corporate-muted text-xs">—</span>
-                      })()}
+                      <FechaFinalizacionCell
+                        item={item}
+                        modulo={modulo}
+                        onSaved={fecha =>
+                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, fecha_finalizacion: fecha } : it))
+                        }
+                      />
                     </td>
                     <td className="px-2 py-2 text-center border-r border-corporate-line/30">
                       {(() => {

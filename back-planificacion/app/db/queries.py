@@ -852,11 +852,9 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             )
             item["fecha_finalizacion_inicial"] = fecha_fin_inicial.isoformat() if fecha_fin_inicial else None
 
-        # Apply escalations to compute projected end date
+        # Apply escalations for status/ETC metadata. fecha_finalizacion is maintained manually.
         if item["escalados"]:
             escalados_list = item["escalados"]
-            fecha_fin_computed = _calcular_fecha_fin_escalada(fecha_fin_inicial, escalados_list)
-            item["fecha_finalizacion"] = fecha_fin_computed.isoformat() if fecha_fin_computed else None
             last_esc = escalados_list[-1]
             if not last_esc.get("fecha_reinicio"):
                 fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_inicial, escalados_list[:-1])
@@ -1013,7 +1011,7 @@ async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dic
         json.dumps(_json_safe(extra_data), ensure_ascii=False),
         ticket_id,
     )
-    # recalcular fecha_finalizacion con configuración del PI y escalados
+    # Mantener fecha_finalizacion como dato manual; solo se actualiza la base calculada.
     fechas = await pool.fetchrow(
         f"SELECT fecha_asignacion, escalados, fecha_escalado, fecha_reinicio FROM {table} WHERE id = $1",
         ticket_id,
@@ -1025,26 +1023,25 @@ async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dic
     escalados_list = _json_load(fechas.get("escalados") if fechas else None) or []
     if not escalados_list and fechas and fechas.get("fecha_escalado"):
         escalados_list = [{"fecha_escalado": str(fechas["fecha_escalado"]), "fecha_reinicio": str(fechas["fecha_reinicio"]) if fechas.get("fecha_reinicio") else None}]
-    fecha_fin = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list)
     if escalados_list and not escalados_list[-1].get("fecha_reinicio"):
         fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list[:-1])
         etc = _calendar_days_between(_as_date(escalados_list[-1]["fecha_escalado"]), fin_before_last)
         await pool.execute(f"UPDATE {table} SET etc = $1 WHERE id = $2", etc, ticket_id)
-    await pool.execute(f"UPDATE {table} SET fecha_finalizacion = $1 WHERE id = $2", fecha_fin, ticket_id)
 
 
-async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha: str | None) -> date | None:
+async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha: str | None) -> tuple[date | None, date | None]:
     table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
     fecha_date = date.fromisoformat(fecha) if fecha else None
     await pool.execute(
         f"UPDATE {table} SET fecha_asignacion = $1 WHERE id = $2",
         fecha_date, ticket_id,
     )
-    # recalcular fecha_finalizacion con las horas ya guardadas en la fila
+    # fecha_finalizacion es manual; al cambiar asignación solo se refresca la base calculada.
     row = await pool.fetchrow(f"""
         SELECT horas_analisis_java, horas_desarrollo_java, horas_pruebas_java, horas_af_java,
                horas_analisis_cobol, horas_desarrollo_cobol, horas_pruebas_cobol, horas_af_cobol,
-               horas_analisis_qa, horas_af_qa, extra, escalados, fecha_escalado, fecha_reinicio
+               horas_analisis_qa, horas_af_qa, extra, escalados, fecha_escalado, fecha_reinicio,
+               fecha_finalizacion
         FROM {table} WHERE id = $1
     """, ticket_id)
     if row:
@@ -1056,17 +1053,27 @@ async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha:
         escalados_list = _json_load(row_dict.get("escalados")) or []
         if not escalados_list and row_dict.get("fecha_escalado"):
             escalados_list = [{"fecha_escalado": str(row_dict["fecha_escalado"]), "fecha_reinicio": str(row_dict["fecha_reinicio"]) if row_dict.get("fecha_reinicio") else None}]
-        fecha_fin = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list)
         if escalados_list and not escalados_list[-1].get("fecha_reinicio"):
             fin_before_last = _calcular_fecha_fin_escalada(fecha_fin_base, escalados_list[:-1])
             etc = _calendar_days_between(_as_date(escalados_list[-1]["fecha_escalado"]), fin_before_last)
             await pool.execute(f"UPDATE {table} SET etc = $1 WHERE id = $2", etc, ticket_id)
-        await pool.execute(
-            f"UPDATE {table} SET fecha_finalizacion = $1 WHERE id = $2",
-            fecha_fin, ticket_id,
-        )
-        return fecha_fin, fecha_fin_base
+        return _as_date(row_dict.get("fecha_finalizacion")), fecha_fin_base
     return None, None
+
+
+async def update_fecha_finalizacion(pool: Any, modulo: str, ticket_id: int, fecha: str | None) -> date | None:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    try:
+        fecha_date = date.fromisoformat(fecha) if fecha else None
+    except ValueError as exc:
+        raise ValueError("Fecha fin real inválida") from exc
+    result = await pool.execute(
+        f"UPDATE {table} SET fecha_finalizacion = $1 WHERE id = $2",
+        fecha_date, ticket_id,
+    )
+    if result != "UPDATE 1":
+        raise ValueError("Ticket no encontrado")
+    return fecha_date
 
 
 async def update_escalamiento(
@@ -1097,7 +1104,7 @@ async def update_escalamiento(
         validated.append({"fecha_escalado": fe_date, "fecha_reinicio": fr_date})
 
     row = await pool.fetchrow(f"""
-        SELECT status, status_antes_escalado, fecha_asignacion, fecha_finalizacion_inicial,
+        SELECT status, status_antes_escalado, fecha_asignacion, fecha_finalizacion, fecha_finalizacion_inicial,
                horas_analisis_java, horas_desarrollo_java, horas_pruebas_java, horas_af_java,
                horas_analisis_cobol, horas_desarrollo_cobol, horas_pruebas_cobol, horas_af_cobol,
                horas_analisis_qa, horas_af_qa, extra
@@ -1124,8 +1131,7 @@ async def update_escalamiento(
                 fecha_fin_inicial, ticket_id,
             )
 
-    # Compute projected end date considering all escalations
-    fecha_fin = _calcular_fecha_fin_escalada(fecha_fin_inicial, validated)
+    fecha_fin = _as_date(row.get("fecha_finalizacion"))
 
     # Status management
     status_actual = row["status"]
@@ -1163,11 +1169,10 @@ async def update_escalamiento(
             fecha_escalado         = $2,
             fecha_reinicio         = $3,
             etc                    = $4,
-            fecha_finalizacion     = $5,
-            status                 = $6,
-            status_antes_escalado  = $7
-        WHERE id = $8
-    """, escalados_json, fecha_escalado_last, fecha_reinicio_last, etc, fecha_fin, status, status_antes_escalado, ticket_id)
+            status                 = $5,
+            status_antes_escalado  = $6
+        WHERE id = $7
+    """, escalados_json, fecha_escalado_last, fecha_reinicio_last, etc, status, status_antes_escalado, ticket_id)
 
     return {
         "escalados": json.loads(escalados_json),

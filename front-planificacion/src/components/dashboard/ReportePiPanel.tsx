@@ -300,7 +300,7 @@ function DetailTable({ rows, piActivo }: { rows: BacklogItem[]; piActivo?: PiInf
         <table className="corporate-table">
           <thead>
             <tr>
-              {['Key', 'Status', 'Responsables', 'Horas', 'F. fin', 'Entrega', 'Escalado', 'ETC'].map(h => <th key={h}>{h}</th>)}
+              {['Key', 'Status', 'Responsables', 'Horas', 'F. fin real', 'Entrega', 'Escalado', 'ETC'].map(h => <th key={h}>{h}</th>)}
             </tr>
           </thead>
           <tbody>

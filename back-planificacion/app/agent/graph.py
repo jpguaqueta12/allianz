@@ -16,10 +16,10 @@ Modelo vigente:
 - Fábrica comparte el PI activo, festivos y capacidad de personas con Mejora Continua.
 - Los proyectos se filtran por su módulo en proyectos.modulo.
 - La planificación real de un ticket vive en extra.planificacion_items y en los campos responsable_* / horas_*.
-- Las fechas clave del backlog son fecha_asignacion, fecha_finalizacion, fecha_escalado, fecha_reinicio, fecha_entrega y ETC.
-- fecha_finalizacion se calcula desde fecha_asignacion con días laborables del PI, festivos y horas_por_dia.
-- Si fecha_escalado está activa, el ticket queda en status Escalado; ETC es el tiempo restante en días calendario hasta la fecha_finalizacion original.
-- fecha_reinicio reanuda el ticket y deja fecha_finalizacion = fecha_reinicio + ETC.
+- Las fechas clave del backlog son fecha_asignacion, fecha_finalizacion (F. Fin Real manual), fecha_escalado, fecha_reinicio, fecha_entrega y ETC.
+- fecha_finalizacion la digita el usuario; fecha_finalizacion_inicial puede existir como referencia técnica calculada.
+- Si fecha_escalado está activa, el ticket queda en status Escalado; ETC es el tiempo restante en días calendario según la base técnica disponible.
+- fecha_reinicio reanuda el ticket sin sobrescribir la F. Fin Real manual.
 - Si el status pasa a Finalizado, se registra fecha_entrega; si vuelve a otro status, fecha_entrega se limpia.
 - Un ticket vencido es el que tiene fecha_finalizacion anterior a hoy, no tiene fecha_entrega y no está en status finalizado/cerrado.
 - El SLA se calcula con políticas de sla_policies por módulo/prioridad/tipo. Estados SLA: EN_TIEMPO, EN_RIESGO, VENCIDO, CUMPLIDO, INCUMPLIDO, PAUSADO y SIN_INICIO.

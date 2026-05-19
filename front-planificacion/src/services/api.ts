@@ -382,6 +382,23 @@ export async function updateFechaAsignacion(
   return r.json()
 }
 
+export async function updateFechaFinalizacion(
+  modulo: string,
+  ticketId: number,
+  fecha: string | null,
+): Promise<{ ok: boolean; fecha_finalizacion: string | null }> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/fecha-finalizacion`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fecha_finalizacion: fecha }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error guardando fecha fin real' }))
+    throw new Error(err.detail ?? 'Error guardando fecha fin real')
+  }
+  return r.json()
+}
+
 export interface EscaladoItem {
   fecha_escalado: string
   fecha_reinicio: string | null
