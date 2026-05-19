@@ -106,6 +106,7 @@ SCHEMA_STATEMENTS = [
     "IF COL_LENGTH('dbo.capacidad_persona_pi', 'reserva_estimacion_horas') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD reserva_estimacion_horas DECIMAL(12,2) NOT NULL CONSTRAINT DF_cpp_reserva_estimacion_added DEFAULT 0;",
     "IF COL_LENGTH('dbo.capacidad_persona_pi', 'reserva_estimacion_periodo') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD reserva_estimacion_periodo NVARCHAR(20) NOT NULL CONSTRAINT DF_cpp_reserva_periodo_added DEFAULT 'PI';",
     "IF COL_LENGTH('dbo.capacidad_persona_pi', 'senior') IS NULL ALTER TABLE dbo.capacidad_persona_pi ADD senior BIT NOT NULL CONSTRAINT DF_cpp_senior_added DEFAULT 0;",
+    "IF COL_LENGTH('dbo.personas', 'modulo') IS NULL ALTER TABLE dbo.personas ADD modulo NVARCHAR(30) NOT NULL CONSTRAINT DF_personas_modulo DEFAULT 'FABRICA';",
     """
     IF OBJECT_ID('dbo.disponibilidad_novedades', 'U') IS NULL
     BEGIN
@@ -413,45 +414,47 @@ PROJECT_SEED = [
 
 
 PERSONA_SEED = [
-    # (nombre, tecnologia, rol)
-    # COBOL
-    ("Sergio Alejandro Panche",            "COBOL", "Lider Tec."),
-    ("Roger Armando Lozada Ortiz",         "COBOL", "Desarrollador"),
-    ("Angie Lizeth Cordoba Lesmes",        "COBOL", "Desarrollador"),
-    ("Maria Fernanda Alvarado",            "COBOL", "Desarrollador"),
-    ("Fredy Fernando Patiño Rave",         "COBOL", "Desarrollador"),
-    ("Jeisson Andres Cutiva Cardenas",     "COBOL", "Desarrollador"),
-    ("Juan Carlos Villarreal Carrera",     "COBOL", "Desarrollador"),
-    ("Sandra Lorena Martinez Merchan",     "COBOL", "Desarrollador"),
-    ("Heidy Vanessa Sanchez Pulido",       "COBOL", "Desarrollador"),
-    ("Juan David Caceres Aponte",          "COBOL", "Desarrollador"),
-    ("Kevin Alejandro Correa Hurtado",     "COBOL", "Desarrollador"),
-    # JAVA
-    ("Laura Marietta Corredor Saenz",      "JAVA",  "Lider Tec."),
-    ("Alvaro Alfonso Lasso Lopez",         "JAVA",  "Desarrollador"),
-    ("Andres Felipe Novoa Garcia",         "JAVA",  "Desarrollador"),
-    ("Camilo Lobo Guerrero Nova",          "JAVA",  "Desarrollador"),
-    ("David Alexander Vasquez Vivas",      "JAVA",  "Desarrollador"),
-    ("Deivis David Sanchez Mestra",        "JAVA",  "Desarrollador"),
-    ("Diego Alejandro Rodriguez Martinez", "JAVA",  "Desarrollador"),
-    ("Dilan Camilo Martinez Zapata",       "JAVA",  "Desarrollador"),
-    ("Erik Steven Alegria Mina",           "JAVA",  "Desarrollador"),
-    ("Jeison Stiven Rojas Montoya",        "JAVA",  "Desarrollador"),
-    ("John Jairo Robledo Quintero",        "JAVA",  "Desarrollador"),
-    ("Jorge Enrique Castillo Gonzalez",    "JAVA",  "Desarrollador"),
-    ("Nicolas Andres Menaca Trujillo",     "JAVA",  "Desarrollador"),
-    ("Johan David Garzon Uricoechea",      "JAVA",  "Desarrollador"),
-    ("Carlos Andres Pavajeau Max",         "JAVA",  "Desarrollador"),
-    ("Nicolas Cardenas Rodriguez",         "JAVA",  "Desarrollador"),
-    ("Johnny Agudelo Rios",                "JAVA",  "Desarrollador"),
-    ("Jhon Carlos Colorado Angulo",        "JAVA",  "Desarrollador"),
-    ("Andres Sebastian Cubillos",          "JAVA",  "Desarrollador"),
-    ("Santiago Nicolas Briñez Garcia",     "JAVA",  "Desarrollador"),
-    # Calidad
-    ("Carlos Villadiego",                  "CALIDAD", "Desarrollador"),
-    ("Rafael Alvarado",                    "CALIDAD", "Desarrollador"),
-    ("Laura Fernanda Pardo",               "CALIDAD", "Desarrollador"),
-    ("Maryerin Hernandez",                 "CALIDAD", "Desarrollador"),
+    # (nombre, tecnologia, rol, modulo)
+    # COBOL — Fábrica
+    ("Sergio Alejandro Panche",            "COBOL", "Lider Tec.",   "FABRICA"),
+    ("Roger Armando Lozada Ortiz",         "COBOL", "Desarrollador","FABRICA"),
+    ("Angie Lizeth Cordoba Lesmes",        "COBOL", "Desarrollador","FABRICA"),
+    ("Maria Fernanda Alvarado",            "COBOL", "Desarrollador","FABRICA"),
+    ("Fredy Fernando Patiño Rave",         "COBOL", "Desarrollador","FABRICA"),
+    ("Juan Carlos Villarreal Carrera",     "COBOL", "Desarrollador","FABRICA"),
+    ("Heidy Vanessa Sanchez Pulido",       "COBOL", "Desarrollador","FABRICA"),
+    ("Kevin Alejandro Correa Hurtado",     "COBOL", "Desarrollador","FABRICA"),
+    # COBOL — Mejora Continua
+    ("Jeisson Andres Cutiva Cardenas",     "COBOL", "Desarrollador","MEJORA_CONTINUA"),
+    ("Sandra Lorena Martinez Merchan",     "COBOL", "Desarrollador","MEJORA_CONTINUA"),
+    ("Juan David Caceres Aponte",          "COBOL", "Desarrollador","MEJORA_CONTINUA"),
+    # JAVA — Fábrica
+    ("Laura Marietta Corredor Saenz",      "JAVA",  "Lider Tec.",   "FABRICA"),
+    ("Andres Felipe Novoa Garcia",         "JAVA",  "Desarrollador","FABRICA"),
+    ("Camilo Lobo Guerrero Nova",          "JAVA",  "Desarrollador","FABRICA"),
+    ("Deivis David Sanchez Mestra",        "JAVA",  "Desarrollador","FABRICA"),
+    ("Diego Alejandro Rodriguez Martinez", "JAVA",  "Desarrollador","FABRICA"),
+    ("Erik Steven Alegria Mina",           "JAVA",  "Desarrollador","FABRICA"),
+    ("Jeison Stiven Rojas Montoya",        "JAVA",  "Desarrollador","FABRICA"),
+    ("Jorge Enrique Castillo Gonzalez",    "JAVA",  "Desarrollador","FABRICA"),
+    ("Nicolas Andres Menaca Trujillo",     "JAVA",  "Desarrollador","FABRICA"),
+    ("Johan David Garzon Uricoechea",      "JAVA",  "Desarrollador","FABRICA"),
+    ("Carlos Andres Pavajeau Max",         "JAVA",  "Desarrollador","FABRICA"),
+    ("Nicolas Cardenas Rodriguez",         "JAVA",  "Desarrollador","FABRICA"),
+    ("Johnny Agudelo Rios",                "JAVA",  "Desarrollador","FABRICA"),
+    ("Jhon Carlos Colorado Angulo",        "JAVA",  "Desarrollador","FABRICA"),
+    ("Andres Sebastian Cubillos",          "JAVA",  "Desarrollador","FABRICA"),
+    ("Santiago Nicolas Briñez Garcia",     "JAVA",  "Desarrollador","FABRICA"),
+    # JAVA — Mejora Continua
+    ("Alvaro Alfonso Lasso Lopez",         "JAVA",  "Desarrollador","MEJORA_CONTINUA"),
+    ("David Alexander Vasquez Vivas",      "JAVA",  "Desarrollador","MEJORA_CONTINUA"),
+    ("Dilan Camilo Martinez Zapata",       "JAVA",  "Desarrollador","MEJORA_CONTINUA"),
+    ("John Jairo Robledo Quintero",        "JAVA",  "Desarrollador","MEJORA_CONTINUA"),
+    # Calidad (compartida — aparece en ambos módulos)
+    ("Carlos Villadiego",                  "CALIDAD", "Desarrollador","FABRICA"),
+    ("Rafael Alvarado",                    "CALIDAD", "Desarrollador","FABRICA"),
+    ("Laura Fernanda Pardo",               "CALIDAD", "Desarrollador","FABRICA"),
+    ("Maryerin Hernandez",                 "CALIDAD", "Desarrollador","FABRICA"),
 ]
 
 
@@ -497,12 +500,28 @@ async def ensure_operational_schema(pool: Any) -> None:
           )
     """)
 
-    for nombre, tecnologia, rol in PERSONA_SEED:
+    for nombre, tecnologia, rol, modulo in PERSONA_SEED:
         await pool.execute("""
             IF NOT EXISTS (SELECT 1 FROM dbo.personas WHERE nombre = $1 AND tecnologia = $2)
-            INSERT INTO dbo.personas (nombre, tecnologia, rol, activo)
-            VALUES ($1, $2, $3, 1)
-        """, nombre, tecnologia, rol)
+            INSERT INTO dbo.personas (nombre, tecnologia, rol, activo, modulo)
+            VALUES ($1, $2, $3, 1, $4)
+        """, nombre, tecnologia, rol, modulo)
+
+    # Migrar personas existentes al módulo correcto
+    mc_names = [
+        'Jeisson Andres Cutiva Cardenas',
+        'Sandra Lorena Martinez Merchan',
+        'Juan David Caceres Aponte',
+        'Alvaro Alfonso Lasso Lopez',
+        'David Alexander Vasquez Vivas',
+        'Dilan Camilo Martinez Zapata',
+        'John Jairo Robledo Quintero',
+    ]
+    for nombre in mc_names:
+        await pool.execute(
+            "UPDATE dbo.personas SET modulo='MEJORA_CONTINUA' WHERE nombre=$1 AND modulo='FABRICA'",
+            nombre,
+        )
 
     for modulo, issue_type, priority, nombre, sla_dias, alerta_pct, pausa in POLICY_SEED:
         await pool.execute("""

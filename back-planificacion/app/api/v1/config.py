@@ -99,7 +99,7 @@ async def nueva_persona_capacidad(pi_id: int, body: AddPersonaCapacidadRequest, 
     import app.db.queries as Q
     try:
         return await Q.crear_y_agregar_persona(
-            get_pool(), pi_id, body.nombre, body.apellidos, body.tecnologia,
+            get_pool(), pi_id, body.nombre, body.apellidos, body.tecnologia, body.modulo,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

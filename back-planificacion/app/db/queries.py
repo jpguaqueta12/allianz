@@ -390,8 +390,9 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
         JOIN capacidad_persona_pi cpp ON cpp.persona_id = per.id
         LEFT JOIN proyectos pr ON pr.id = cpp.proyecto_principal
         WHERE cpp.pi_id = $1 AND per.activo = TRUE
+          AND (per.modulo = $2 OR per.tecnologia = 'CALIDAD')
         ORDER BY per.tecnologia, per.nombre
-    """, pi_id)
+    """, pi_id, modulo)
 
     result = []
     for row in rows:
@@ -510,6 +511,7 @@ async def crear_y_agregar_persona(
     nombre: str,
     apellidos: str,
     tecnologia: str,
+    modulo: str = "FABRICA",
 ) -> dict:
     """Crea una persona nueva y la agrega a la capacidad del PI con horas_por_persona del PI."""
     async with pool.acquire() as conn:
@@ -519,12 +521,12 @@ async def crear_y_agregar_persona(
             )
             nombre_completo = f"{nombre} {apellidos}".strip()
             persona = await conn.fetchrow("""
-                INSERT INTO personas (nombre, tecnologia, rol, activo)
-                VALUES ($1, $2, 'Desarrollador', 1);
+                INSERT INTO personas (nombre, tecnologia, rol, activo, modulo)
+                VALUES ($1, $2, 'Desarrollador', 1, $3);
                 SELECT id, nombre, tecnologia, rol
                 FROM personas
                 WHERE id = CAST(SCOPE_IDENTITY() AS int)
-            """, nombre_completo, tecnologia.upper())
+            """, nombre_completo, tecnologia.upper(), modulo.upper())
             await conn.execute("""
                 IF NOT EXISTS (SELECT 1 FROM capacidad_persona_pi WHERE pi_id=$1 AND persona_id=$2)
                 INSERT INTO capacidad_persona_pi (pi_id, persona_id, capacidad_horas)

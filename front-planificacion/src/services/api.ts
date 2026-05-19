@@ -102,7 +102,7 @@ export async function getIncidentesDashboard(): Promise<DashboardData> {
 
 export async function crearPersonaEnCapacidad(
   piId: number,
-  body: { nombre: string; apellidos: string; tecnologia: string },
+  body: { nombre: string; apellidos: string; tecnologia: string; modulo: string },
 ): Promise<void> {
   const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/nueva-persona`, {
     method: 'POST',

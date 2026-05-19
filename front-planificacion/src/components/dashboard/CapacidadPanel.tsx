@@ -70,6 +70,7 @@ interface Props {
   piId?: number
   horasPorPersona?: number
   onRefresh?: () => void
+  modulo?: string
 }
 
 const estadoColor: Record<string, string> = {
@@ -696,7 +697,7 @@ function CapacityTable({
   )
 }
 
-export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh }: Props) {
+export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh, modulo = 'FABRICA' }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [confirm, setConfirm] = useState<{ id: number; nombre: string } | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -735,7 +736,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh 
 
   async function handleCrear(nombre: string, apellidos: string, tecnologia: TecnologiaCapacidad) {
     if (!piId) throw new Error('Sin PI activo')
-    await crearPersonaEnCapacidad(piId, { nombre, apellidos, tecnologia })
+    await crearPersonaEnCapacidad(piId, { nombre, apellidos, tecnologia, modulo })
   }
 
   async function handleSincronizar() {

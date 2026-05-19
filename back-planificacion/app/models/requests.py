@@ -43,6 +43,7 @@ class AddPersonaCapacidadRequest(BaseModel):
     nombre: str
     apellidos: str
     tecnologia: str
+    modulo: str = "FABRICA"
 
 
 class UpdatePersonaCapacidadRequest(BaseModel):
