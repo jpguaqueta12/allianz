@@ -382,6 +382,23 @@ export async function updateFechaAsignacion(
   return r.json()
 }
 
+export async function updateFechaComprometidaCliente(
+  modulo: string,
+  ticketId: number,
+  fecha: string | null,
+): Promise<{ ok: boolean; fecha_finalizacion_inicial: string | null }> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/fecha-comprometida-cliente`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fecha_finalizacion_inicial: fecha }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error guardando fecha comprometida' }))
+    throw new Error(err.detail ?? 'Error guardando fecha comprometida')
+  }
+  return r.json()
+}
+
 export async function updateFechaFinalizacion(
   modulo: string,
   ticketId: number,

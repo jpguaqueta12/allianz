@@ -75,6 +75,10 @@ class FechaFinalizacionRequest(BaseModel):
     fecha_finalizacion: Optional[str] = None
 
 
+class FechaComprometidaClienteRequest(BaseModel):
+    fecha_finalizacion_inicial: Optional[str] = None
+
+
 class EscalamientoItemRequest(BaseModel):
     fecha_escalado: str
     fecha_reinicio: Optional[str] = None

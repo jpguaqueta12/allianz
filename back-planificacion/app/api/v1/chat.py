@@ -15,6 +15,7 @@ from app.models.requests import (
     InitSessionRequest,
     PlanificacionRequest,
     FechaAsignacionRequest,
+    FechaComprometidaClienteRequest,
     FechaFinalizacionRequest,
     EscalamientoRequest,
     StatusRequest,
@@ -231,6 +232,21 @@ async def update_fecha_finalizacion(modulo: str, ticket_id: int, body: FechaFina
     return {
         "ok": True,
         "fecha_finalizacion": fecha_fin.isoformat() if fecha_fin else None,
+    }
+
+
+@router.patch("/backlog/{modulo}/{ticket_id}/fecha-comprometida-cliente")
+async def update_fecha_comprometida_cliente(modulo: str, ticket_id: int, body: FechaComprometidaClienteRequest):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    pool = get_pool()
+    try:
+        fecha = await Q.update_fecha_comprometida_cliente(pool, modulo.upper(), ticket_id, body.fecha_finalizacion_inicial)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "ok": True,
+        "fecha_finalizacion_inicial": fecha.isoformat() if fecha else None,
     }
 
 

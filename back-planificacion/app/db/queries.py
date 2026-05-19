@@ -818,11 +818,8 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
         WHERE pi_id = $1
         ORDER BY ticket_key NULLS LAST, summary
     """, pi_id)
-    pi_row = await pool.fetchrow("SELECT horas_por_dia, fecha_fin FROM pi WHERE id = $1", pi_id)
-    horas_dia = (pi_row["horas_por_dia"] if pi_row else None) or 8
+    pi_row = await pool.fetchrow("SELECT fecha_fin FROM pi WHERE id = $1", pi_id)
     pi_fecha_fin = _as_date(pi_row["fecha_fin"]) if pi_row else None
-    festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
-    festivos = {f["fecha"] for f in festivos_rows}
     result = []
     for row in rows:
         item = dict(row)
@@ -842,15 +839,8 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
                 "fecha_reinicio": item.get("fecha_reinicio"),
             }]
 
-        # Compute fecha_finalizacion_inicial (base without escalations)
+        # fecha_finalizacion_inicial is the manual customer-committed date.
         fecha_fin_inicial = _as_date(item.get("fecha_finalizacion_inicial"))
-        if not fecha_fin_inicial:
-            java, cobol, qa = _horas_por_perfil_de_data(item)
-            fecha_fin_inicial = _calcular_fecha_fin(
-                _as_date(item.get("fecha_asignacion")),
-                java, cobol, qa, horas_dia, festivos,
-            )
-            item["fecha_finalizacion_inicial"] = fecha_fin_inicial.isoformat() if fecha_fin_inicial else None
 
         # Apply escalations for status/ETC metadata. fecha_finalizacion is maintained manually.
         if item["escalados"]:
@@ -1011,15 +1001,12 @@ async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dic
         json.dumps(_json_safe(extra_data), ensure_ascii=False),
         ticket_id,
     )
-    # Mantener fecha_finalizacion como dato manual; solo se actualiza la base calculada.
+    # Mantener fechas comprometida y real como datos manuales.
     fechas = await pool.fetchrow(
-        f"SELECT fecha_asignacion, escalados, fecha_escalado, fecha_reinicio FROM {table} WHERE id = $1",
+        f"SELECT fecha_asignacion, fecha_finalizacion_inicial, escalados, fecha_escalado, fecha_reinicio FROM {table} WHERE id = $1",
         ticket_id,
     )
-    horas_dia, festivos = await _pi_config_para_ticket(pool, table, ticket_id)
-    java, cobol, qa = _horas_por_perfil_de_data(data)
-    fecha_fin_base = _calcular_fecha_fin(fechas["fecha_asignacion"] if fechas else None, java, cobol, qa, horas_dia, festivos)
-    await pool.execute(f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2", fecha_fin_base, ticket_id)
+    fecha_fin_base = _as_date(fechas.get("fecha_finalizacion_inicial") if fechas else None)
     escalados_list = _json_load(fechas.get("escalados") if fechas else None) or []
     if not escalados_list and fechas and fechas.get("fecha_escalado"):
         escalados_list = [{"fecha_escalado": str(fechas["fecha_escalado"]), "fecha_reinicio": str(fechas["fecha_reinicio"]) if fechas.get("fecha_reinicio") else None}]
@@ -1036,20 +1023,15 @@ async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha:
         f"UPDATE {table} SET fecha_asignacion = $1 WHERE id = $2",
         fecha_date, ticket_id,
     )
-    # fecha_finalizacion es manual; al cambiar asignación solo se refresca la base calculada.
+    # Las fechas comprometida y real son manuales; asignación no las recalcula.
     row = await pool.fetchrow(f"""
-        SELECT horas_analisis_java, horas_desarrollo_java, horas_pruebas_java, horas_af_java,
-               horas_analisis_cobol, horas_desarrollo_cobol, horas_pruebas_cobol, horas_af_cobol,
-               horas_analisis_qa, horas_af_qa, extra, escalados, fecha_escalado, fecha_reinicio,
-               fecha_finalizacion
+        SELECT escalados, fecha_escalado, fecha_reinicio,
+               fecha_finalizacion, fecha_finalizacion_inicial
         FROM {table} WHERE id = $1
     """, ticket_id)
     if row:
         row_dict = dict(row)
-        horas_dia, festivos = await _pi_config_para_ticket(pool, table, ticket_id)
-        java, cobol, qa = _horas_por_perfil_de_data(row_dict)
-        fecha_fin_base = _calcular_fecha_fin(fecha_date, java, cobol, qa, horas_dia, festivos)
-        await pool.execute(f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2", fecha_fin_base, ticket_id)
+        fecha_fin_base = _as_date(row_dict.get("fecha_finalizacion_inicial"))
         escalados_list = _json_load(row_dict.get("escalados")) or []
         if not escalados_list and row_dict.get("fecha_escalado"):
             escalados_list = [{"fecha_escalado": str(row_dict["fecha_escalado"]), "fecha_reinicio": str(row_dict["fecha_reinicio"]) if row_dict.get("fecha_reinicio") else None}]
@@ -1059,6 +1041,21 @@ async def update_fecha_asignacion(pool: Any, modulo: str, ticket_id: int, fecha:
             await pool.execute(f"UPDATE {table} SET etc = $1 WHERE id = $2", etc, ticket_id)
         return _as_date(row_dict.get("fecha_finalizacion")), fecha_fin_base
     return None, None
+
+
+async def update_fecha_comprometida_cliente(pool: Any, modulo: str, ticket_id: int, fecha: str | None) -> date | None:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    try:
+        fecha_date = date.fromisoformat(fecha) if fecha else None
+    except ValueError as exc:
+        raise ValueError("Fecha comprometida a cliente inválida") from exc
+    result = await pool.execute(
+        f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2",
+        fecha_date, ticket_id,
+    )
+    if result != "UPDATE 1":
+        raise ValueError("Ticket no encontrado")
+    return fecha_date
 
 
 async def update_fecha_finalizacion(pool: Any, modulo: str, ticket_id: int, fecha: str | None) -> date | None:
@@ -1114,22 +1111,8 @@ async def update_escalamiento(
     if not row:
         raise ValueError("Ticket no encontrado")
 
-    horas_dia, festivos = await _pi_config_para_ticket(pool, table, ticket_id)
-    row_dict = dict(row)
-
-    # Get or compute fecha_finalizacion_inicial (base without escalations)
+    # fecha_finalizacion_inicial is the manual customer-committed date.
     fecha_fin_inicial = _as_date(row.get("fecha_finalizacion_inicial"))
-    if not fecha_fin_inicial:
-        java, cobol, qa = _horas_por_perfil_de_data(row_dict)
-        fecha_fin_inicial = _calcular_fecha_fin(
-            _as_date(row["fecha_asignacion"]) if row.get("fecha_asignacion") else None,
-            java, cobol, qa, horas_dia, festivos,
-        )
-        if fecha_fin_inicial:
-            await pool.execute(
-                f"UPDATE {table} SET fecha_finalizacion_inicial = $1 WHERE id = $2",
-                fecha_fin_inicial, ticket_id,
-            )
 
     fecha_fin = _as_date(row.get("fecha_finalizacion"))
 

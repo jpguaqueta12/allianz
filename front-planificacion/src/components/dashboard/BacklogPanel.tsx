@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -59,15 +59,7 @@ function _baseHoras(item: BacklogItem): { java: number; cobol: number; calidad: 
 }
 
 function calcularFechaFinInicial(item: BacklogItem, piActivo?: PiInfo | null): string | null {
-  if (!item.fecha_asignacion) return null
-  if (item.fecha_finalizacion_inicial) return item.fecha_finalizacion_inicial
-  const { java, cobol, calidad } = _baseHoras(item)
-  const totalHoras = Math.max(java, cobol) + calidad
-  if (totalHoras <= 0) return null
-  const horasPorDia  = piActivo?.horas_por_dia ?? 8
-  const festivosSet  = new Set((piActivo?.festivos ?? []).map(f => f.fecha))
-  const dias = Math.ceil(totalHoras * 1.15 / horasPorDia)
-  return addWorkingDays(item.fecha_asignacion, dias, festivosSet, horasPorDia)
+  return item.fecha_finalizacion_inicial ?? null
 }
 
 function calcularFechaFin(item: BacklogItem, piActivo?: PiInfo | null): string | null {
@@ -145,7 +137,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     'Sprint', 'Labels', 'Components', 'Fix Version', 'Release Notes',
     'Resolución', 'Created', 'Updated',
     // planificación
-    'F. Asignación', 'F. Fin Inicial', 'F. Fin Real', 'F. Entrega',
+    'F. Asignación', 'Fecha comprometida a cliente', 'F. Fin Real', 'F. Entrega',
     'ETC (días / horas)', 'PRN',
     // escalados
     'Escalados (hist.)',
@@ -163,7 +155,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
   ]
 
   const rows = items.map(item => {
-    const fechaFinInicial = item.fecha_finalizacion_inicial ?? calcularFechaFinInicial(item, piActivo) ?? ''
+    const fechaFinInicial = item.fecha_finalizacion_inicial ?? ''
     const fechaFin = item.fecha_finalizacion ?? ''
     const etc = calcularEtc(item, piActivo)
     const prn = calcularPrn(item, piActivo)
@@ -1043,6 +1035,7 @@ function BacklogDetailModal({
             <DetailField label="Tipo" value={<Badge value={item.issue_type} colorMap={{}} />} />
             <StatusSelectField item={item} modulo={modulo} statusOptions={statusOptions} onSaved={onSaved} />
             <DetailField label="Fecha Asignación" value={item.fecha_asignacion ?? null} />
+            <DetailField label="Fecha Comprometida Cliente" value={item.fecha_finalizacion_inicial ?? null} />
             <DetailField label="F. Fin Real" value={item.fecha_finalizacion ?? null} />
             <DetailField label="Fecha Entrega" value={item.fecha_entrega ?? null} />
             <DetailField label="Fecha Escalado" value={item.fecha_escalado ?? null} />
@@ -1252,6 +1245,79 @@ function FechaFinalizacionCell({
         className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-emerald-500 focus:bg-white focus:outline-none disabled:opacity-50"
       />
       {saving && <Loader2 size={12} className="animate-spin text-emerald-600 shrink-0" />}
+    </div>
+  )
+}
+
+function FechaComprometidaClienteCell({
+  item,
+  modulo,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  onSaved: (fecha: string | null) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [value, setValue]   = useState(item.fecha_finalizacion_inicial ?? '')
+  const valueRef  = useRef(item.fecha_finalizacion_inicial ?? '')
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    if (savingRef.current) return
+    const v = item.fecha_finalizacion_inicial ?? ''
+    setValue(v)
+    valueRef.current = v
+  }, [item.fecha_finalizacion_inicial])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setValue(e.target.value)
+    valueRef.current = e.target.value
+  }
+
+  function commit() {
+    const trimmed = valueRef.current.trim()
+    const current = item.fecha_finalizacion_inicial ?? ''
+    if (trimmed === current) return
+
+    if (!trimmed) {
+      savingRef.current = true
+      setSaving(true)
+      updateFechaComprometidaCliente(modulo, item.id, null)
+        .then(res => onSaved(res.fecha_finalizacion_inicial))
+        .catch(() => { setValue(current); valueRef.current = current })
+        .finally(() => { savingRef.current = false; setSaving(false) })
+      return
+    }
+
+    if (!isValidDate(trimmed)) {
+      setValue(current)
+      valueRef.current = current
+      return
+    }
+
+    savingRef.current = true
+    setSaving(true)
+    updateFechaComprometidaCliente(modulo, item.id, trimmed)
+      .then(res => onSaved(res.fecha_finalizacion_inicial))
+      .catch(() => { setValue(current); valueRef.current = current })
+      .finally(() => { savingRef.current = false; setSaving(false) })
+  }
+
+  return (
+    <div className="flex items-center gap-1 px-1">
+      <CalendarDays size={12} className={clsx('shrink-0', value ? 'text-gray-500' : 'text-corporate-muted')} />
+      <input
+        type="text"
+        value={value}
+        placeholder="AAAA-MM-DD"
+        onChange={handleChange}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+        disabled={saving}
+        className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-gray-400 focus:bg-white focus:outline-none disabled:opacity-50"
+      />
+      {saving && <Loader2 size={12} className="animate-spin text-gray-500 shrink-0" />}
     </div>
   )
 }
@@ -1897,7 +1963,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[130px] px-3 py-3 text-left font-semibold border-r border-white/10 shrink-0">Tareas</th>
                 <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
-                <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Inicial</th>
+                <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Fecha comprometida a cliente</th>
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
                 <th className="min-w-[90px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">PRN</th>
                 <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
@@ -1947,12 +2013,13 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       />
                     </td>
                     <td className="px-3 py-2 border-r border-corporate-line/30">
-                      {(() => {
-                        const fin = item.fecha_finalizacion_inicial ?? calcularFechaFinInicial(item, piActivo)
-                        return fin
-                          ? <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500"><CalendarDays size={11} className="shrink-0" />{fin}</span>
-                          : <span className="text-corporate-muted text-xs">—</span>
-                      })()}
+                      <FechaComprometidaClienteCell
+                        item={item}
+                        modulo={modulo}
+                        onSaved={fecha =>
+                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, fecha_finalizacion_inicial: fecha } : it))
+                        }
+                      />
                     </td>
                     <td className="px-3 py-2 border-r border-corporate-line/30">
                       <FechaFinalizacionCell
