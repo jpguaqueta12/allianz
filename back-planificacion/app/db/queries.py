@@ -1985,3 +1985,53 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
         })
 
     return result
+
+
+async def get_alertas_sin_asignacion(pool: Any, modulo: str, pi_id: int | None = None) -> list[dict]:
+    table = "backlog_fabrica" if modulo == "FABRICA" else "backlog_mejora_continua"
+    if pi_id is None:
+        pi_row = await pool.fetchrow(
+            "SELECT id FROM pi WHERE activo=TRUE AND modulo='MEJORA_CONTINUA' LIMIT 1"
+        )
+    else:
+        pi_row = await pool.fetchrow("SELECT id FROM pi WHERE id=$1 LIMIT 1", pi_id)
+    if not pi_row:
+        return []
+
+    rows = await pool.fetch(f"""
+        SELECT
+            id, ticket_key, summary, assignee, assigned_team, status,
+            fecha_asignacion, fecha_finalizacion, fecha_entrega,
+            responsable_java, responsable_cobol, responsable_dialogue,
+            responsable_parametria, responsable_qa,
+            extra
+        FROM {table}
+        WHERE fecha_asignacion IS NOT NULL
+          AND fecha_entrega IS NULL
+          AND fecha_finalizacion IS NULL
+          AND pi_id = $1
+        ORDER BY fecha_asignacion, ticket_key NULLS LAST, summary
+    """, pi_row["id"])
+
+    result = []
+    for row in rows:
+        if _is_finalizado_status(row["status"]):
+            continue
+
+        items = _planificacion_items_from_extra(row["extra"])
+        responsables = _responsables_trabajo(row, items)
+        if responsables:
+            continue
+
+        fecha_asig: date | None = row["fecha_asignacion"]
+        result.append({
+            "id": row["id"],
+            "ticket_key": row["ticket_key"],
+            "summary": row["summary"],
+            "assignee": row["assignee"],
+            "equipo": row["assigned_team"],
+            "fecha_asignacion": fecha_asig.isoformat() if fecha_asig else None,
+            "status": row["status"],
+        })
+
+    return result

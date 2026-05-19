@@ -160,6 +160,16 @@ export interface AlertaItem {
   qa_horas: number
 }
 
+export interface AlertaSinAsignacionItem {
+  id: number
+  ticket_key: string | null
+  summary: string
+  assignee: string | null
+  equipo: string | null
+  fecha_asignacion: string | null
+  status: string | null
+}
+
 export interface DashboardData {
   capacidad: PersonaCapacidad[]
   resumen_proyectos: ResumenProyecto[]

@@ -312,6 +312,13 @@ async def get_alertas(modulo: str, pi_id: Optional[int] = Query(default=None)):
     return await Q.get_alertas(get_pool(), modulo.upper(), pi_id)
 
 
+@router.get("/alertas-sin-asignacion/{modulo}")
+async def get_alertas_sin_asignacion(modulo: str, pi_id: Optional[int] = Query(default=None)):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    return await Q.get_alertas_sin_asignacion(get_pool(), modulo.upper(), pi_id)
+
+
 @router.get("/sla/{modulo}")
 async def get_sla(modulo: str, pi_id: Optional[int] = Query(default=None)):
     from app.db.connection import get_pool

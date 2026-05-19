@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, RefreshCw, UserX, XCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { AlertaItem } from '../../types'
-import { getAlertas } from '../../services/api'
+import { AlertaItem, AlertaSinAsignacionItem } from '../../types'
+import { getAlertas, getAlertasSinAsignacion } from '../../services/api'
 
 // ── helpers de presentación ───────────────────────────────────────────────────
 
@@ -86,7 +86,83 @@ function matchFiltro(item: AlertaItem, f: Filtro): boolean {
   return true
 }
 
+// ── tabla sin asignación ──────────────────────────────────────────────────────
+
+function TablaSinAsignacion({ items, loading, loaded }: {
+  items: AlertaSinAsignacionItem[]
+  loading: boolean
+  loaded: boolean
+}) {
+  if (!loaded && loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-allianz-blue" />
+    </div>
+  )
+
+  return items.length === 0 ? (
+    <div className="rounded-xl border border-corporate-line bg-white py-16 text-center text-sm text-corporate-muted">
+      {loaded ? 'No hay tickets pendientes de asignación de personal' : 'Cargando…'}
+    </div>
+  ) : (
+    <div className="overflow-hidden rounded-xl border border-orange-200 shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] table-auto text-xs border-collapse">
+          <thead>
+            <tr className="bg-orange-600 text-white">
+              <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
+              <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
+              <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo asignado</th>
+              <th className="min-w-[130px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Assignee</th>
+              <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Asignación</th>
+              <th className="min-w-[130px] px-3 py-3 text-center font-semibold whitespace-nowrap">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, idx) => (
+              <tr key={item.id}
+                className={clsx(
+                  'border-b border-orange-100 transition-colors bg-orange-50/40',
+                  idx % 2 === 0 ? 'bg-orange-50/30' : 'bg-white',
+                )}
+              >
+                <td className="px-3 py-2 border-r border-orange-100">
+                  <span className="font-mono font-semibold text-allianz-blue whitespace-nowrap">
+                    {item.ticket_key ?? '—'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 border-r border-orange-100">
+                  <span className="line-clamp-2 text-corporate-ink leading-snug" title={item.summary}>
+                    {item.summary}
+                  </span>
+                </td>
+                <td className="px-3 py-2 border-r border-orange-100">
+                  <span className="line-clamp-2 font-medium text-corporate-ink leading-snug">
+                    {item.equipo ?? '—'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 border-r border-orange-100 text-corporate-muted">
+                  {item.assignee ?? '—'}
+                </td>
+                <td className="px-3 py-2 border-r border-orange-100 whitespace-nowrap text-corporate-muted">
+                  {item.fecha_asignacion ?? '—'}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-semibold bg-orange-50 text-orange-700 border-orange-300">
+                    <UserX size={11} /> Requiere asignación
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── panel principal ───────────────────────────────────────────────────────────
+
+type Vista = 'compromiso' | 'sin_asignacion'
 
 interface Props {
   modulo: 'MEJORA_CONTINUA' | 'FABRICA'
@@ -96,17 +172,23 @@ interface Props {
 
 export function AlertasPanel({ modulo, active, piId }: Props) {
   const [items, setItems]     = useState<AlertaItem[]>([])
+  const [sinAsig, setSinAsig] = useState<AlertaSinAsignacionItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const [filtro, setFiltro]   = useState<Filtro>('todos')
   const [loaded, setLoaded]   = useState(false)
+  const [vista, setVista]     = useState<Vista>('compromiso')
 
   async function load() {
     setLoading(true)
     setError(null)
     try {
-      const data = await getAlertas(modulo, piId)
+      const [data, sinData] = await Promise.all([
+        getAlertas(modulo, piId),
+        getAlertasSinAsignacion(modulo, piId),
+      ])
       setItems(data)
+      setSinAsig(sinData)
       setLoaded(true)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
@@ -118,6 +200,7 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
   useEffect(() => {
     setLoaded(false)
     setItems([])
+    setSinAsig([])
   }, [modulo, piId])
 
   useEffect(() => {
@@ -154,133 +237,189 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* resumen */}
-      <div className="flex flex-wrap gap-3">
-        <SummaryGroup title="Alertas — Compromiso cliente" items={devItems} field="alerta_desarrollo" />
-      </div>
-
-      {/* filtros + refresh */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1">
-          {FILTROS.map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFiltro(f.id)}
-              className={clsx(
-                'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                filtro === f.id
-                  ? 'border-allianz-blue bg-allianz-blue text-white'
-                  : 'border-corporate-line bg-white text-corporate-muted hover:text-corporate-ink',
-              )}
-            >
-              {f.label}
-              {f.id !== 'todos' && (
-                <span className="ml-1.5 opacity-70">
-                  {f.id === 'alertas'
-                    ? items.filter(i => matchFiltro(i, 'alertas')).length
-                    : f.id === 'amarilla'
-                    ? items.filter(i => matchFiltro(i, 'amarilla')).length
-                    : items.filter(i => matchFiltro(i, 'roja')).length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* pestañas de vista */}
+      <div className="flex gap-2 border-b border-corporate-line pb-0">
         <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink"
+          onClick={() => setVista('compromiso')}
+          className={clsx(
+            'px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px',
+            vista === 'compromiso'
+              ? 'border-allianz-blue text-allianz-blue'
+              : 'border-transparent text-corporate-muted hover:text-corporate-ink',
+          )}
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-          Actualizar
+          Compromiso cliente
+        </button>
+        <button
+          onClick={() => setVista('sin_asignacion')}
+          className={clsx(
+            'px-4 py-2 text-xs font-semibold border-b-2 transition-colors -mb-px flex items-center gap-1.5',
+            vista === 'sin_asignacion'
+              ? 'border-orange-500 text-orange-600'
+              : 'border-transparent text-corporate-muted hover:text-corporate-ink',
+          )}
+        >
+          <UserX size={12} />
+          Sin asignación de personal
+          {sinAsig.length > 0 && (
+            <span className={clsx(
+              'ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+              vista === 'sin_asignacion' ? 'bg-orange-100 text-orange-700' : 'bg-orange-500 text-white',
+            )}>
+              {sinAsig.length}
+            </span>
+          )}
         </button>
       </div>
 
-      {/* tabla */}
-      {visible.length === 0 ? (
-        <div className="rounded-xl border border-corporate-line bg-white py-16 text-center text-sm text-corporate-muted">
-          {loaded ? 'No hay tickets con alertas activas en el filtro seleccionado' : 'Cargando…'}
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-corporate-line shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] table-auto text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-800 text-white">
-                  <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
-                  <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
-                  <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo asignado</th>
-                  <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Inicio</th>
-                  <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Compromiso cliente</th>
-                  <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta</th>
-                  <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
-                  <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Desviación</th>
-                  <th className="min-w-[170px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Horas (J / C / G / Cal)</th>
-                  <th className="min-w-[180px] px-3 py-3 text-left font-semibold whitespace-nowrap">Equipo trabajo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((item, idx) => {
-                  const isEven = idx % 2 === 0
-                  const extra = rowClass(item)
-                  return (
-                    <tr key={item.id}
-                      className={clsx(
-                        'border-b border-corporate-line transition-colors',
-                        extra || (isEven ? 'bg-white' : 'bg-slate-50/60'),
-                      )}
-                    >
-                      <td className="px-3 py-2 border-r border-corporate-line/30">
-                        <span className="font-mono font-semibold text-allianz-blue whitespace-nowrap">
-                          {item.ticket_key ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30">
-                        <span className="line-clamp-2 text-corporate-ink leading-snug" title={item.summary}>
-                          {item.summary}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30">
-                        <span className="line-clamp-2 font-medium text-corporate-ink leading-snug" title={equipoAsignado(item) ?? ''}>
-                          {equipoAsignado(item) ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                        {item.fecha_asignacion ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap font-medium">
-                        {item.fecha_comprometida_cliente ?? item.fecha_fin_desarrollo ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30 text-center">
-                        <NivelBadge nivel={item.alerta_desarrollo} />
-                      </td>
-                      <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                        {item.fecha_fin_real ?? item.fecha_fin_qa ?? '—'}
-                      </td>
-                      <td className={clsx('px-3 py-2 border-r border-corporate-line/30 text-right font-mono text-[11px]', (item.dias_desviacion ?? 0) > 0 ? 'font-semibold text-red-700' : 'text-corporate-muted')}>
-                        {item.dias_desviacion != null ? `${item.dias_desviacion}d` : item.dias_para_compromiso != null ? `${item.dias_para_compromiso}d` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-[11px] whitespace-nowrap text-corporate-muted border-r border-corporate-line/30">
-                        {item.java_horas > 0 && <span className="text-blue-600">J:{item.java_horas}h</span>}
-                        {item.java_horas > 0 && item.cobol_horas > 0 && ' '}
-                        {item.cobol_horas > 0 && <span className="text-emerald-600">C:{item.cobol_horas}h</span>}
-                        {(item.java_horas > 0 || item.cobol_horas > 0) && (item.gestion_horas ?? 0) > 0 && ' '}
-                        {(item.gestion_horas ?? 0) > 0 && <span className="text-amber-600">G:{item.gestion_horas}h</span>}
-                        {(item.java_horas > 0 || item.cobol_horas > 0 || (item.gestion_horas ?? 0) > 0) && (item.calidad_horas ?? item.qa_horas) > 0 && ' '}
-                        {(item.calidad_horas ?? item.qa_horas) > 0 && <span className="text-rose-600">Cal:{item.calidad_horas ?? item.qa_horas}h</span>}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className="line-clamp-2 text-corporate-ink leading-snug" title={equipoTrabajo(item) ?? ''}>
-                          {equipoTrabajo(item) ?? '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {vista === 'sin_asignacion' ? (
+        <>
+          <div className="flex justify-between items-center">
+            <p className="text-xs text-corporate-muted">
+              Tickets asignados al equipo pero sin personal de desarrollo designado en el plan.
+            </p>
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
           </div>
-        </div>
+          <TablaSinAsignacion items={sinAsig} loading={loading} loaded={loaded} />
+        </>
+      ) : (
+        <>
+          {/* resumen */}
+          <div className="flex flex-wrap gap-3">
+            <SummaryGroup title="Alertas — Compromiso cliente" items={devItems} field="alerta_desarrollo" />
+          </div>
+
+          {/* filtros + refresh */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-1">
+              {FILTROS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFiltro(f.id)}
+                  className={clsx(
+                    'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
+                    filtro === f.id
+                      ? 'border-allianz-blue bg-allianz-blue text-white'
+                      : 'border-corporate-line bg-white text-corporate-muted hover:text-corporate-ink',
+                  )}
+                >
+                  {f.label}
+                  {f.id !== 'todos' && (
+                    <span className="ml-1.5 opacity-70">
+                      {f.id === 'alertas'
+                        ? items.filter(i => matchFiltro(i, 'alertas')).length
+                        : f.id === 'amarilla'
+                        ? items.filter(i => matchFiltro(i, 'amarilla')).length
+                        : items.filter(i => matchFiltro(i, 'roja')).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
+          </div>
+
+          {/* tabla */}
+          {visible.length === 0 ? (
+            <div className="rounded-xl border border-corporate-line bg-white py-16 text-center text-sm text-corporate-muted">
+              {loaded ? 'No hay tickets con alertas activas en el filtro seleccionado' : 'Cargando…'}
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-corporate-line shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] table-auto text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800 text-white">
+                      <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Key</th>
+                      <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
+                      <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Equipo asignado</th>
+                      <th className="min-w-[100px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Inicio</th>
+                      <th className="min-w-[150px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Compromiso cliente</th>
+                      <th className="min-w-[110px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Alerta</th>
+                      <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
+                      <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Desviación</th>
+                      <th className="min-w-[170px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Horas (J / C / G / Cal)</th>
+                      <th className="min-w-[180px] px-3 py-3 text-left font-semibold whitespace-nowrap">Equipo trabajo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((item, idx) => {
+                      const isEven = idx % 2 === 0
+                      const extra = rowClass(item)
+                      return (
+                        <tr key={item.id}
+                          className={clsx(
+                            'border-b border-corporate-line transition-colors',
+                            extra || (isEven ? 'bg-white' : 'bg-slate-50/60'),
+                          )}
+                        >
+                          <td className="px-3 py-2 border-r border-corporate-line/30">
+                            <span className="font-mono font-semibold text-allianz-blue whitespace-nowrap">
+                              {item.ticket_key ?? '—'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30">
+                            <span className="line-clamp-2 text-corporate-ink leading-snug" title={item.summary}>
+                              {item.summary}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30">
+                            <span className="line-clamp-2 font-medium text-corporate-ink leading-snug" title={equipoAsignado(item) ?? ''}>
+                              {equipoAsignado(item) ?? '—'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
+                            {item.fecha_asignacion ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap font-medium">
+                            {item.fecha_comprometida_cliente ?? item.fecha_fin_desarrollo ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30 text-center">
+                            <NivelBadge nivel={item.alerta_desarrollo} />
+                          </td>
+                          <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
+                            {item.fecha_fin_real ?? item.fecha_fin_qa ?? '—'}
+                          </td>
+                          <td className={clsx('px-3 py-2 border-r border-corporate-line/30 text-right font-mono text-[11px]', (item.dias_desviacion ?? 0) > 0 ? 'font-semibold text-red-700' : 'text-corporate-muted')}>
+                            {item.dias_desviacion != null ? `${item.dias_desviacion}d` : item.dias_para_compromiso != null ? `${item.dias_para_compromiso}d` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-[11px] whitespace-nowrap text-corporate-muted border-r border-corporate-line/30">
+                            {item.java_horas > 0 && <span className="text-blue-600">J:{item.java_horas}h</span>}
+                            {item.java_horas > 0 && item.cobol_horas > 0 && ' '}
+                            {item.cobol_horas > 0 && <span className="text-emerald-600">C:{item.cobol_horas}h</span>}
+                            {(item.java_horas > 0 || item.cobol_horas > 0) && (item.gestion_horas ?? 0) > 0 && ' '}
+                            {(item.gestion_horas ?? 0) > 0 && <span className="text-amber-600">G:{item.gestion_horas}h</span>}
+                            {(item.java_horas > 0 || item.cobol_horas > 0 || (item.gestion_horas ?? 0) > 0) && (item.calidad_horas ?? item.qa_horas) > 0 && ' '}
+                            {(item.calidad_horas ?? item.qa_horas) > 0 && <span className="text-rose-600">Cal:{item.calidad_horas ?? item.qa_horas}h</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="line-clamp-2 text-corporate-ink leading-snug" title={equipoTrabajo(item) ?? ''}>
+                              {equipoTrabajo(item) ?? '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -193,6 +193,12 @@ export async function getAlertas(modulo: string, piId?: number | null): Promise<
   return r.json()
 }
 
+export async function getAlertasSinAsignacion(modulo: string, piId?: number | null): Promise<import('../types').AlertaSinAsignacionItem[]> {
+  const r = await fetch(withPi(`${BASE}/alertas-sin-asignacion/${modulo}`, piId))
+  if (!r.ok) throw new Error('Error cargando alertas sin asignación')
+  return r.json()
+}
+
 export interface SlaPolicy {
   id: number | null
   modulo: string
