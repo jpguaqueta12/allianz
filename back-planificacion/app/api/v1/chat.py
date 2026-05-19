@@ -292,6 +292,16 @@ async def update_status(modulo: str, ticket_id: int, body: StatusRequest):
     }
 
 
+@router.patch("/backlog/{modulo}/{ticket_id}/project")
+async def update_project(modulo: str, ticket_id: int, body: dict):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    updated = await Q.update_backlog_project(get_pool(), modulo.upper(), ticket_id, body.get("project"))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    return {"ok": True, "project": body.get("project")}
+
+
 @router.delete("/backlog/{modulo}/{ticket_id}")
 async def delete_backlog(modulo: str, ticket_id: int):
     from app.db.connection import get_pool

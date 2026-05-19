@@ -913,14 +913,28 @@ async def create_backlog_item(pool: Any, modulo: str, pi_id: int, data: dict) ->
         if exists:
             raise ValueError("Ya existe un ticket con ese Key en este PI")
 
+    def _parse_date(val: object) -> "date | None":
+        if not val:
+            return None
+        try:
+            from datetime import date as _date
+            return _date.fromisoformat(str(val))
+        except Exception:
+            return None
+
+    fecha_asig = _parse_date(data.get("fecha_asignacion"))
+    fecha_comp = _parse_date(data.get("fecha_finalizacion_inicial"))
+
     row = await pool.fetchrow(f"""
         INSERT INTO {table}
             (created, issue_type, ticket_key, project, status, summary,
              assigned_team, assignee, reporter, epic_link, priority,
-             story_points, sprint, labels, components, fix_version, pi_id, extra)
+             story_points, sprint, labels, components, fix_version,
+             fecha_asignacion, fecha_finalizacion_inicial,
+             pi_id, extra)
         VALUES
             (GETDATE(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-             $11, $12, $13, $14, $15, $16, $17);
+             $11, $12, $13, $14, $15, $16, $17, $18, $19);
         SELECT CAST(SCOPE_IDENTITY() AS int) AS id
     """,
         data.get("issue_type"),
@@ -938,6 +952,8 @@ async def create_backlog_item(pool: Any, modulo: str, pi_id: int, data: dict) ->
         data.get("labels"),
         data.get("components"),
         data.get("fix_version"),
+        fecha_asig,
+        fecha_comp,
         pi_id,
         json.dumps({"manual": True}, ensure_ascii=False),
     )
@@ -946,6 +962,16 @@ async def create_backlog_item(pool: Any, modulo: str, pi_id: int, data: dict) ->
         if item["id"] == created_id:
             return item
     raise ValueError("No se pudo cargar el ticket creado")
+
+
+async def update_backlog_project(pool: Any, modulo: str, ticket_id: int, project: str | None) -> bool:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    result = await pool.execute(
+        f"UPDATE {table} SET project=$1 WHERE id=$2",
+        project or None,
+        ticket_id,
+    )
+    return result == "UPDATE 1"
 
 
 async def delete_backlog_item(pool: Any, modulo: str, ticket_id: int) -> bool:

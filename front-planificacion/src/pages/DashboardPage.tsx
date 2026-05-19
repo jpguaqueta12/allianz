@@ -132,7 +132,7 @@ export function DashboardPage() {
               />
             )}
             {tab === 'backlog' && (
-              <BacklogPanel modulo="MEJORA_CONTINUA" active={tab === 'backlog'} piActivo={data.pi_activo} piId={data.pi_activo?.id ?? selectedPiId} onCapacityRefresh={refresh} />
+              <BacklogPanel modulo="MEJORA_CONTINUA" active={tab === 'backlog'} piActivo={data.pi_activo} piId={data.pi_activo?.id ?? selectedPiId} onCapacityRefresh={refresh} resumenProyectos={data.resumen_proyectos} />
             )}
             {tab === 'alertas' && (
               <AlertasPanel modulo="MEJORA_CONTINUA" active={tab === 'alertas'} piId={data.pi_activo?.id ?? selectedPiId} />

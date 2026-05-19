@@ -5,9 +5,9 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import clsx from 'clsx'
-import { BacklogItem, PiInfo } from '../../types'
+import { BacklogItem, PiInfo, ResumenProyecto } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -1034,9 +1034,6 @@ function BacklogDetailModal({
             <DetailField label="Created" value={item.created} />
             <DetailField label="Tipo" value={<Badge value={item.issue_type} colorMap={{}} />} />
             <StatusSelectField item={item} modulo={modulo} statusOptions={statusOptions} onSaved={onSaved} />
-            <DetailField label="Fecha Asignación" value={item.fecha_asignacion ?? null} />
-            <DetailField label="Fecha Comprometida Cliente" value={item.fecha_finalizacion_inicial ?? null} />
-            <DetailField label="F. Fin Real" value={item.fecha_finalizacion ?? null} />
             <DetailField label="Fecha Entrega" value={item.fecha_entrega ?? null} />
             <DetailField label="Fecha Escalado" value={item.fecha_escalado ?? null} />
             <DetailField label="Fecha Reinicio" value={item.fecha_reinicio ?? null} />
@@ -1097,6 +1094,52 @@ function BacklogDetailModal({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Celda proyecto inline ─────────────────────────────────────────────────────
+
+function ProyectoCell({
+  item,
+  modulo,
+  proyectos,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  proyectos: ResumenProyecto[]
+  onSaved: (project: string | null) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const sorted = [...proyectos].sort((a, b) => a.identi.localeCompare(b.identi))
+
+  async function handleChange(value: string) {
+    const next = value || null
+    setSaving(true)
+    try {
+      await updateBacklogProject(modulo, item.id, next)
+      onSaved(next)
+    } catch {
+      // silent — value reverts visually on next render
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <select
+        disabled={saving}
+        value={item.project ?? ''}
+        onChange={e => handleChange(e.target.value)}
+        className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink hover:border-corporate-line focus:border-allianz-blue focus:outline-none disabled:opacity-50"
+      >
+        <option value="">—</option>
+        {sorted.map(p => (
+          <option key={p.id} value={p.identi}>{p.identi}</option>
+        ))}
+      </select>
     </div>
   )
 }
@@ -1515,7 +1558,13 @@ const BACKLOG_FORM_EMPTY: CreateBacklogData = {
   labels: null,
   components: null,
   fix_version: null,
+  fecha_asignacion: null,
+  fecha_finalizacion_inicial: null,
 }
+
+const ISSUE_TYPE_OPTIONS  = ['Story', 'Bug', 'Task', 'Epic', 'Improvement', 'New Feature', 'Technical Debt', 'Sub-task']
+const PRIORITY_OPTIONS    = ['Highest', 'High', 'Medium', 'Low', 'Lowest']
+const CREATE_STATUS_OPT   = STATUS_OPTIONS
 
 function textOrNull(value: string): string | null {
   const trimmed = value.trim()
@@ -1527,15 +1576,19 @@ function ManualBacklogModal({
   piId,
   onClose,
   onCreated,
+  resumenProyectos = [],
 }: {
   modulo: string
   piId?: number | null
   onClose: () => void
   onCreated: (item: BacklogItem) => void
+  resumenProyectos?: ResumenProyecto[]
 }) {
   const [form, setForm] = useState<CreateBacklogData>(BACKLOG_FORM_EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const proyectosSorted = [...resumenProyectos].sort((a, b) => a.identi.localeCompare(b.identi))
 
   function setField<K extends keyof CreateBacklogData>(field: K, value: CreateBacklogData[K]) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -1575,6 +1628,9 @@ function ManualBacklogModal({
     }
   }
 
+  const inputCls = "mt-1 w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+  const labelCls = "text-[11px] font-medium uppercase text-corporate-muted"
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-3xl rounded-xl border border-corporate-line bg-white shadow-2xl">
@@ -1588,65 +1644,159 @@ function ManualBacklogModal({
           </button>
         </div>
 
-        <div className="grid max-h-[70vh] gap-3 overflow-y-auto p-5 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <label className="text-[11px] font-medium uppercase text-corporate-muted">Summary</label>
+        <div className="max-h-[70vh] overflow-y-auto p-5 space-y-3">
+          {/* Summary */}
+          <div>
+            <label className={labelCls}>Summary <span className="text-red-500">*</span></label>
             <textarea
               autoFocus
               value={form.summary}
               onChange={e => setField('summary', e.target.value)}
-              className="mt-1 min-h-[84px] w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+              className="mt-1 min-h-[72px] w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
             />
           </div>
-          {[
-            ['ticket_key', 'Key'],
-            ['issue_type', 'Tipo'],
-            ['project', 'Proyecto'],
-            ['status', 'Status'],
-            ['assigned_team', 'Equipo asignado'],
-            ['assignee', 'Assignee'],
-            ['reporter', 'Reporter'],
-            ['epic_link', 'Epic Link'],
-            ['priority', 'Prioridad'],
-            ['sprint', 'Sprint'],
-            ['labels', 'Labels'],
-            ['components', 'Components'],
-            ['fix_version', 'Fix Version'],
-          ].map(([field, label]) => (
-            <div key={field}>
-              <label className="text-[11px] font-medium uppercase text-corporate-muted">{label}</label>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* Proyecto dropdown */}
+            <div>
+              <label className={labelCls}>Proyecto</label>
+              <select
+                value={form.project ?? ''}
+                onChange={e => setField('project', e.target.value || null)}
+                className={inputCls}
+              >
+                <option value="">— Sin proyecto —</option>
+                {proyectosSorted.map(p => (
+                  <option key={p.id} value={p.identi}>{p.identi} — {p.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tipo dropdown */}
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <select
+                value={form.issue_type ?? ''}
+                onChange={e => setField('issue_type', e.target.value || null)}
+                className={inputCls}
+              >
+                <option value="">— Seleccionar —</option>
+                {ISSUE_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            {/* Status dropdown */}
+            <div>
+              <label className={labelCls}>Status</label>
+              <select
+                value={form.status ?? 'Backlog'}
+                onChange={e => setField('status', e.target.value)}
+                className={inputCls}
+              >
+                {CREATE_STATUS_OPT.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            {/* Prioridad dropdown */}
+            <div>
+              <label className={labelCls}>Prioridad</label>
+              <select
+                value={form.priority ?? ''}
+                onChange={e => setField('priority', e.target.value || null)}
+                className={inputCls}
+              >
+                <option value="">— Seleccionar —</option>
+                {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            {/* Key */}
+            <div>
+              <label className={labelCls}>Key</label>
+              <input type="text" value={form.ticket_key ?? ''} onChange={e => setField('ticket_key', e.target.value || null)} className={inputCls} placeholder="Ej: MC-123" />
+            </div>
+
+            {/* Equipo asignado */}
+            <div>
+              <label className={labelCls}>Equipo asignado</label>
+              <input type="text" value={form.assigned_team ?? ''} onChange={e => setField('assigned_team', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Assignee */}
+            <div>
+              <label className={labelCls}>Assignee</label>
+              <input type="text" value={form.assignee ?? ''} onChange={e => setField('assignee', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Reporter */}
+            <div>
+              <label className={labelCls}>Reporter</label>
+              <input type="text" value={form.reporter ?? ''} onChange={e => setField('reporter', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Fecha asignación */}
+            <div>
+              <label className={labelCls}>Fecha asignación</label>
+              <input type="date" value={form.fecha_asignacion ?? ''} onChange={e => setField('fecha_asignacion', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Fecha comprometida cliente */}
+            <div>
+              <label className={labelCls}>Fecha comprometida cliente</label>
+              <input type="date" value={form.fecha_finalizacion_inicial ?? ''} onChange={e => setField('fecha_finalizacion_inicial', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Story Points */}
+            <div>
+              <label className={labelCls}>Story Points</label>
               <input
-                type="text"
-                value={(form[field as keyof CreateBacklogData] as string | null) ?? ''}
-                onChange={e => setField(field as keyof CreateBacklogData, e.target.value as never)}
-                className="mt-1 w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                type="number" min="0" step="0.5"
+                value={form.story_points ?? ''}
+                onChange={e => setField('story_points', e.target.value === '' ? null : Number(e.target.value))}
+                className={inputCls}
               />
             </div>
-          ))}
-          <div>
-            <label className="text-[11px] font-medium uppercase text-corporate-muted">Story Points</label>
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              value={form.story_points ?? ''}
-              onChange={e => setField('story_points', e.target.value === '' ? null : Number(e.target.value))}
-              className="mt-1 w-full rounded border border-corporate-line px-3 py-2 text-sm text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-            />
+
+            {/* Sprint */}
+            <div>
+              <label className={labelCls}>Sprint</label>
+              <input type="text" value={form.sprint ?? ''} onChange={e => setField('sprint', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Epic Link */}
+            <div>
+              <label className={labelCls}>Epic Link</label>
+              <input type="text" value={form.epic_link ?? ''} onChange={e => setField('epic_link', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Fix Version */}
+            <div>
+              <label className={labelCls}>Fix Version</label>
+              <input type="text" value={form.fix_version ?? ''} onChange={e => setField('fix_version', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Labels */}
+            <div>
+              <label className={labelCls}>Labels</label>
+              <input type="text" value={form.labels ?? ''} onChange={e => setField('labels', e.target.value || null)} className={inputCls} />
+            </div>
+
+            {/* Components */}
+            <div>
+              <label className={labelCls}>Components</label>
+              <input type="text" value={form.components ?? ''} onChange={e => setField('components', e.target.value || null)} className={inputCls} />
+            </div>
           </div>
+
           {error && (
-            <div className="md:col-span-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {error}
             </div>
           )}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-corporate-line px-5 py-4">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-corporate-line px-4 py-2 text-sm font-medium text-corporate-muted hover:text-corporate-ink disabled:opacity-40"
-          >
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-corporate-line px-4 py-2 text-sm font-medium text-corporate-muted hover:text-corporate-ink disabled:opacity-40">
             Cancelar
           </button>
           <button
@@ -1722,9 +1872,10 @@ interface Props {
   piActivo?: PiInfo | null
   piId?: number | null
   onCapacityRefresh?: () => void | Promise<void>
+  resumenProyectos?: ResumenProyecto[]
 }
 
-export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh }: Props) {
+export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh, resumenProyectos = [] }: Props) {
   const [items, setItems]     = useState<BacklogItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -1853,6 +2004,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
           piId={piId}
           onClose={() => setCreating(false)}
           onCreated={created => setItems([created])}
+          resumenProyectos={resumenProyectos}
         />
       )}
       <div className="flex flex-col items-center gap-3 py-16 text-center">
@@ -1896,6 +2048,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
             setItems(prev => [created, ...prev])
             setPage(1)
           }}
+          resumenProyectos={resumenProyectos}
         />
       )}
       {deleting && (
@@ -1971,6 +2124,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
+                <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Proyecto</th>
                 <th className="min-w-[110px] px-3 py-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -2075,6 +2229,16 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         ? <span className="font-mono font-bold text-allianz-blue">{item.total_horas}h</span>
                         : <span className="text-corporate-muted">—</span>
                       }
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-corporate-line/30">
+                      <ProyectoCell
+                        item={item}
+                        modulo={modulo}
+                        proyectos={resumenProyectos}
+                        onSaved={project =>
+                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, project } : it))
+                        }
+                      />
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex items-center justify-center gap-1">

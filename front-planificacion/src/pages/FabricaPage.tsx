@@ -133,7 +133,7 @@ export function FabricaPage() {
               />
             )}
             {tab === 'backlog' && (
-              <BacklogPanel modulo="FABRICA" active={tab === 'backlog'} piActivo={data.pi_activo} piId={data.pi_activo?.id ?? selectedPiId} onCapacityRefresh={refresh} />
+              <BacklogPanel modulo="FABRICA" active={tab === 'backlog'} piActivo={data.pi_activo} piId={data.pi_activo?.id ?? selectedPiId} onCapacityRefresh={refresh} resumenProyectos={data.resumen_proyectos} />
             )}
             {tab === 'alertas' && (
               <AlertasPanel modulo="FABRICA" active={tab === 'alertas'} piId={data.pi_activo?.id ?? selectedPiId} />

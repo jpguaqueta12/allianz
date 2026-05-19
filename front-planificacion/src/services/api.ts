@@ -292,6 +292,8 @@ export interface CreateBacklogData {
   labels: string | null
   components: string | null
   fix_version: string | null
+  fecha_asignacion: string | null
+  fecha_finalizacion_inicial: string | null
 }
 
 export async function createBacklogItem(modulo: string, piId: number | null | undefined, data: CreateBacklogData): Promise<BacklogItem> {
@@ -305,6 +307,15 @@ export async function createBacklogItem(modulo: string, piId: number | null | un
     throw new Error(err.detail ?? 'Error creando ticket')
   }
   return r.json()
+}
+
+export async function updateBacklogProject(modulo: string, ticketId: number, project: string | null): Promise<void> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/project`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project }),
+  })
+  if (!r.ok) throw new Error('Error actualizando proyecto')
 }
 
 export type PlanificacionPerfil = 'java' | 'cobol' | 'gestion' | 'calidad'

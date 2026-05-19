@@ -109,6 +109,8 @@ class CreateBacklogRequest(BaseModel):
     labels: Optional[str] = None
     components: Optional[str] = None
     fix_version: Optional[str] = None
+    fecha_asignacion: Optional[str] = None
+    fecha_finalizacion_inicial: Optional[str] = None
 
 
 class PlanificacionItemRequest(BaseModel):
