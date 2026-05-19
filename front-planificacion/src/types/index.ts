@@ -107,6 +107,7 @@ export interface BacklogItem {
     horas: number | null
     tarea?: string | null
     subtarea?: string | null
+    status?: string | null
     fecha_inicio?: string | null
     fecha_fin?: string | null
     fecha_escalamiento?: string | null

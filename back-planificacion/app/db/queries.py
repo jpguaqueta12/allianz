@@ -217,6 +217,7 @@ def _planificacion_items_from_extra(extra: object) -> list[dict]:
                 "horas": horas,
                 "tarea": (item.get("tarea") or "").strip() or None,
                 "subtarea": (item.get("subtarea") or "").strip() or None,
+                "status": (item.get("status") or "").strip() or None,
                 "fecha_inicio": item.get("fecha_inicio") or None,
                 "fecha_fin": item.get("fecha_fin") or None,
                 "fecha_escalamiento": item.get("fecha_escalamiento") or None,

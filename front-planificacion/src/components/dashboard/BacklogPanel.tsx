@@ -178,7 +178,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
       .map(p => {
         const tarea = [p.tarea, p.subtarea].filter(Boolean).join(' / ') || 'Sin tarea'
         const fechas = [p.fecha_inicio, p.fecha_fin].filter(Boolean).join('→')
-        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
+        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${p.status ? ` ${p.status}` : ''}${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
       })
       .join(' | ')
 
@@ -295,7 +295,7 @@ const STATUS_OPTIONS = [
   'Escalado',
   'Finalizado',
 ]
-const PLAN_MODAL_STATUS_OPTIONS = ['In Progress', 'Cancelled', 'Done', 'Blocked']
+const PLAN_ROW_STATUS_OPTIONS = ['In Progress', 'Cancelled', 'Done', 'Blocked']
 
 function Badge({ value, colorMap }: { value: string | null; colorMap: Record<string, string> }) {
   if (!value) return <span className="text-corporate-muted text-xs">—</span>
@@ -438,11 +438,6 @@ const PLAN_VACÍO: PlanificacionData = {
   fecha_asignacion: null,
 }
 
-type PlanificacionSavedData = PlanificacionData & {
-  status?: string | null
-  fecha_entrega?: string | null
-}
-
 function itemToPlan(item: BacklogItem): PlanificacionData {
   return {
     responsable_java: item.responsable_java, responsable_cobol: item.responsable_cobol,
@@ -471,6 +466,7 @@ function newRow(): PlanificacionRow {
     horas: null,
     tarea: 'Task',
     subtarea: null,
+    status: 'In Progress',
     fecha_inicio: null,
     fecha_fin: null,
     fecha_escalamiento: null,
@@ -534,6 +530,7 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
       horas,
       tarea: row.tarea?.trim() || null,
       subtarea: row.subtarea?.trim() || null,
+      status: row.status?.trim() || null,
       fecha_inicio: row.fecha_inicio || null,
       fecha_fin: row.fecha_fin || null,
       fecha_escalamiento: row.fecha_escalamiento || null,
@@ -582,7 +579,7 @@ interface ModalProps {
   item: BacklogItem
   modulo: string
   onClose: () => void
-  onSaved: (updated: PlanificacionSavedData) => void
+  onSaved: (updated: PlanificacionData) => void
   onCapacityRefresh?: () => void | Promise<void>
   piId?: number | null
 }
@@ -595,7 +592,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
   const [confirm, setConfirm]             = useState(false)
   const [error, setError]                 = useState<string | null>(null)
   const [fechaAsignacion, setFechaAsignacion] = useState<string | null>(item.fecha_asignacion ?? null)
-  const [status, setStatus]               = useState<string>(item.status ?? '')
 
   useEffect(() => {
     getResponsables(modulo, piId).then(setPersonas).catch(() => {})
@@ -629,19 +625,13 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
     setSaving(true); setError(null); setConfirm(false)
     try {
       await updatePlanificacion(modulo, item.id, data)
-      let statusPatch: { status?: string | null; fecha_entrega?: string | null } = {}
-      const nextStatus = status.trim()
-      if (nextStatus && nextStatus !== (item.status ?? '')) {
-        const res = await updateBacklogStatus(modulo, item.id, nextStatus)
-        statusPatch = { status: res.status, fecha_entrega: res.fecha_entrega }
-      }
       try {
         await onCapacityRefresh?.()
       } catch {
         // La planificación ya quedó guardada; el refresco periódico corregirá la capacidad si falla aquí.
       }
       setSaved(true)
-      setTimeout(() => { onSaved({ ...data, ...statusPatch }); onClose() }, 700)
+      setTimeout(() => { onSaved(data); onClose() }, 700)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error guardando')
     } finally {
@@ -651,9 +641,9 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
 
   function saveRows() {
     const activeRows = rows.filter(row => row.responsable || (row.horas ?? 0) > 0)
-    const incomplete = activeRows.some(row => !row.responsable || !row.tarea || !row.subtarea || !row.horas || row.horas <= 0)
+    const incomplete = activeRows.some(row => !row.responsable || !row.tarea || !row.subtarea || !row.status || !row.horas || row.horas <= 0)
     if (incomplete) {
-      setError('Cada asignación debe tener tarea, subtarea, responsable y horas mayores a 0')
+      setError('Cada asignación debe tener tarea, subtarea, status, responsable y horas mayores a 0')
       return
     }
     const invalidDates = activeRows.some(row =>
@@ -666,8 +656,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
     }
     handleSave({ ...rowsToPlan(activeRows), fecha_asignacion: fechaAsignacion })
   }
-
-  const statusOptions = optionsWithCurrent(PLAN_MODAL_STATUS_OPTIONS, status)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -684,46 +672,30 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
           </button>
         </div>
 
-        {/* fecha asignación y status */}
+        {/* fecha asignación */}
         <div className="border-b border-corporate-line bg-blue-50/60 px-6 py-3">
-          <div className="grid gap-3 md:grid-cols-[1fr_240px]">
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
-                Fecha de asignación de inicio
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <CalendarDays size={15} className="shrink-0 text-allianz-blue" />
-                <input
-                  type="date"
-                  value={fechaAsignacion ?? ''}
-                  onChange={e => setFechaAsignacion(e.target.value || null)}
-                  className="rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
-                />
-                {fechaAsignacion ? (
-                  <button
-                    type="button"
-                    onClick={() => setFechaAsignacion(null)}
-                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    <X size={12} /> Quitar fecha
-                  </button>
-                ) : (
-                  <span className="text-xs text-corporate-muted">Sin fecha asignada</span>
-                )}
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
-                Status
-              </p>
-              <select
-                value={status}
-                onChange={e => { setStatus(e.target.value); setError(null) }}
-                className="w-full rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-allianz-blue">
+            Fecha de asignación de inicio
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <CalendarDays size={15} className="shrink-0 text-allianz-blue" />
+            <input
+              type="date"
+              value={fechaAsignacion ?? ''}
+              onChange={e => setFechaAsignacion(e.target.value || null)}
+              className="rounded-lg border border-allianz-blue/40 bg-white px-3 py-1.5 text-sm text-corporate-ink shadow-sm focus:outline-none focus:ring-2 focus:ring-allianz-blue"
+            />
+            {fechaAsignacion ? (
+              <button
+                type="button"
+                onClick={() => setFechaAsignacion(null)}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors"
               >
-                {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
-            </div>
+                <X size={12} /> Quitar fecha
+              </button>
+            ) : (
+              <span className="text-xs text-corporate-muted">Sin fecha asignada</span>
+            )}
           </div>
         </div>
 
@@ -760,11 +732,12 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1180px] text-xs border-collapse">
+              <table className="w-full min-w-[1320px] text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-800 text-white">
                     <th className="px-3 py-2.5 text-left font-semibold">Tarea</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Subtarea</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Status</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Responsable</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Perfil</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Horas</th>
@@ -779,6 +752,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                     const responsables = responsablesForPerfil(personas, row.perfil)
                     const tareaOptions = optionsWithCurrent(TAREA_OPTIONS, row.tarea)
                     const subtareaOptions = optionsWithCurrent(SUBTAREA_OPTIONS, row.subtarea)
+                    const statusOptions = optionsWithCurrent(PLAN_ROW_STATUS_OPTIONS, row.status)
                     return (
                       <tr key={row.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
                         <td className="border-b border-corporate-line px-3 py-2">
@@ -799,6 +773,16 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                           >
                             <option value="">Seleccionar subtarea</option>
                             {subtareaOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <select
+                            value={row.status ?? ''}
+                            onChange={e => updateRow(row.id, { status: e.target.value || null })}
+                            className="w-full rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                          >
+                            <option value="">Seleccionar status</option>
+                            {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
                         </td>
                         <td className="border-b border-corporate-line px-3 py-2">
@@ -874,7 +858,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-800 text-white">
-                    <td colSpan={4} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
+                    <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
                     <td className="px-3 py-2.5 text-right text-sm font-bold">
                       {totalGeneral > 0 ? totalGeneral : <span className="text-slate-500 font-normal text-xs">—</span>}
                     </td>
@@ -1081,7 +1065,7 @@ function BacklogDetailModal({
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-corporate-muted">
                     <tr>
-                      {['Tarea', 'Subtarea', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
+                      {['Tarea', 'Subtarea', 'Status', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
                         <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -1091,6 +1075,7 @@ function BacklogDetailModal({
                       <tr key={idx} className="border-t border-corporate-line">
                         <td className="px-2 py-1.5">{row.tarea ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.subtarea ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.status ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.responsable ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.perfil}</td>
                         <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
@@ -1623,7 +1608,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => { if (active && !loaded) load() }, [active, loaded, modulo, piId])
 
-  function handleSaved(updated: PlanificacionSavedData) {
+  function handleSaved(updated: PlanificacionData) {
     if (!editing) return
     const total = updated.planificacion_items?.length
       ? updated.planificacion_items.reduce((s, row) => s + (row.horas ?? 0), 0)
