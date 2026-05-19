@@ -12,6 +12,7 @@ from app.db.queries import (
     _calcular_horas_asignadas_por_persona,
     _effective_reserva_estimacion,
     _horas_por_perfil_de_data,
+    _planificacion_items_from_extra,
     _row_escalado_activo,
     _working_days_in_range,
 )
@@ -26,6 +27,25 @@ class FakePool:
 
 
 class FechaPlanificacionTests(unittest.TestCase):
+    def test_planificacion_items_conserva_status_y_observacion(self):
+        items = _planificacion_items_from_extra(json.dumps({
+            "planificacion_items": [
+                {
+                    "responsable": "Ana",
+                    "perfil": "java",
+                    "fase": "desarrollo",
+                    "horas": 8,
+                    "tarea": "Task",
+                    "subtarea": "Desarrollo",
+                    "status": "Blocked",
+                    "observacion": "Pendiente de insumo",
+                },
+            ],
+        }))
+
+        self.assertEqual(items[0]["status"], "Blocked")
+        self.assertEqual(items[0]["observacion"], "Pendiente de insumo")
+
     def test_horas_por_perfil_prefiere_items_en_extra(self):
         data = {
             "horas_analisis_java": 1,

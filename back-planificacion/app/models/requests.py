@@ -110,6 +110,7 @@ class PlanificacionItemRequest(BaseModel):
     tarea: Optional[str] = None
     subtarea: Optional[str] = None
     status: Optional[str] = None
+    observacion: Optional[str] = None
     fecha_inicio: Optional[str] = None
     fecha_fin: Optional[str] = None
     fecha_escalamiento: Optional[str] = None

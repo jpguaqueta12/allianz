@@ -178,7 +178,7 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
       .map(p => {
         const tarea = [p.tarea, p.subtarea].filter(Boolean).join(' / ') || 'Sin tarea'
         const fechas = [p.fecha_inicio, p.fecha_fin].filter(Boolean).join('→')
-        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${p.status ? ` ${p.status}` : ''}${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
+        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${p.status ? ` ${p.status}` : ''}${p.observacion ? ` obs. ${p.observacion}` : ''}${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
       })
       .join(' | ')
 
@@ -467,6 +467,7 @@ function newRow(): PlanificacionRow {
     tarea: 'Task',
     subtarea: null,
     status: 'In Progress',
+    observacion: null,
     fecha_inicio: null,
     fecha_fin: null,
     fecha_escalamiento: null,
@@ -531,6 +532,7 @@ function rowsToPlan(rows: PlanificacionRow[]): PlanificacionData {
       tarea: row.tarea?.trim() || null,
       subtarea: row.subtarea?.trim() || null,
       status: row.status?.trim() || null,
+      observacion: row.observacion?.trim() || null,
       fecha_inicio: row.fecha_inicio || null,
       fecha_fin: row.fecha_fin || null,
       fecha_escalamiento: row.fecha_escalamiento || null,
@@ -732,12 +734,13 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1320px] text-xs border-collapse">
+              <table className="w-full min-w-[1540px] text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-800 text-white">
                     <th className="px-3 py-2.5 text-left font-semibold">Tarea</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Subtarea</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Status</th>
+                    <th className="px-3 py-2.5 text-left font-semibold">Observación</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Responsable</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Perfil</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Horas</th>
@@ -784,6 +787,15 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                             <option value="">Seleccionar status</option>
                             {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
+                        </td>
+                        <td className="border-b border-corporate-line px-3 py-2">
+                          <input
+                            type="text"
+                            value={row.observacion ?? ''}
+                            onChange={e => updateRow(row.id, { observacion: e.target.value || null })}
+                            className="w-52 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                            placeholder="Observación"
+                          />
                         </td>
                         <td className="border-b border-corporate-line px-3 py-2">
                           <select
@@ -858,7 +870,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-800 text-white">
-                    <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
+                    <td colSpan={6} className="px-3 py-2.5 text-right text-xs font-bold">TOTAL</td>
                     <td className="px-3 py-2.5 text-right text-sm font-bold">
                       {totalGeneral > 0 ? totalGeneral : <span className="text-slate-500 font-normal text-xs">—</span>}
                     </td>
@@ -1065,7 +1077,7 @@ function BacklogDetailModal({
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-corporate-muted">
                     <tr>
-                      {['Tarea', 'Subtarea', 'Status', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
+                      {['Tarea', 'Subtarea', 'Status', 'Observación', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
                         <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -1076,6 +1088,7 @@ function BacklogDetailModal({
                         <td className="px-2 py-1.5">{row.tarea ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.subtarea ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.status ?? '—'}</td>
+                        <td className="px-2 py-1.5">{row.observacion ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.responsable ?? '—'}</td>
                         <td className="px-2 py-1.5">{row.perfil}</td>
                         <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
