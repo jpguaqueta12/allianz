@@ -1045,6 +1045,65 @@ function StatusSelectField({
   )
 }
 
+const STATUS_COLOR: Record<string, string> = {
+  'Backlog':               'text-slate-600 bg-slate-100 border-slate-200',
+  'To Do':                 'text-slate-600 bg-slate-100 border-slate-200',
+  'In Analysis':           'text-purple-700 bg-purple-50 border-purple-200',
+  'In Progress':           'text-blue-700 bg-blue-50 border-blue-200',
+  'In Acceptance':         'text-amber-700 bg-amber-50 border-amber-200',
+  'WAITING FOR APPROVAL':  'text-orange-700 bg-orange-50 border-orange-200',
+  'Escalado':              'text-red-700 bg-red-50 border-red-200',
+  'Finalizado':            'text-green-700 bg-green-50 border-green-200',
+}
+
+function StatusCell({
+  item,
+  modulo,
+  statusOptions,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  statusOptions: string[]
+  onSaved: (patch: Partial<BacklogItem>) => void
+}) {
+  const [value, setValue] = useState(item.status ?? '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setValue(item.status ?? '') }, [item.status])
+
+  async function handleChange(next: string) {
+    const prev = value
+    setValue(next)
+    setSaving(true)
+    try {
+      const res = await updateBacklogStatus(modulo, item.id, next)
+      onSaved({ status: res.status, fecha_entrega: res.fecha_entrega })
+    } catch {
+      setValue(prev)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const colorCls = value ? (STATUS_COLOR[value] ?? 'text-corporate-muted bg-white border-corporate-line') : 'text-corporate-muted bg-white border-corporate-line'
+  const options = Array.from(new Set([...statusOptions, item.status].filter(Boolean) as string[]))
+
+  return (
+    <select
+      value={value}
+      disabled={saving}
+      onChange={e => handleChange(e.target.value)}
+      className={clsx(
+        'w-full rounded border px-1.5 py-1 text-[11px] font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-allianz-blue disabled:opacity-50',
+        colorCls,
+      )}
+    >
+      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+    </select>
+  )
+}
+
 const PLAN_ROW_STATUS_COLORS: Record<string, string> = {
   'In Progress': 'text-blue-700 bg-blue-50 border-blue-200',
   'Done':        'text-green-700 bg-green-50 border-green-200',
@@ -1157,7 +1216,7 @@ function BacklogDetailModal({
           <div className="grid gap-3 md:grid-cols-3">
             <DetailField label="Created" value={item.created} />
             <DetailField label="Tipo" value={<Badge value={item.issue_type} colorMap={{}} />} />
-            <StatusSelectField item={item} modulo={modulo} statusOptions={statusOptions} onSaved={onSaved} />
+            <DetailField label="Status" value={item.status} />
             <DetailField label="Fecha Entrega" value={item.fecha_entrega ?? null} />
             <DetailField label="Fecha Escalado" value={item.fecha_escalado ?? null} />
             <DetailField label="Fecha Reinicio" value={item.fecha_reinicio ?? null} />
@@ -1975,6 +2034,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [loaded, setLoaded]   = useState(false)
   const [search, setSearch]   = useState('')
   const [personaFilter, setPersonaFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
   const [creating, setCreating] = useState(false)
@@ -2044,6 +2104,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       const assignedToPersona = responsablesByPerfil(item).some(({ responsables }) => responsables.includes(personaFilter))
       if (!assignedToPersona) return false
     }
+    if (statusFilter && (item.status ?? '') !== statusFilter) return false
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -2069,7 +2130,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => {
     setPage(1)
-  }, [search, personaFilter, pageSize, items.length])
+  }, [search, personaFilter, statusFilter, pageSize, items.length])
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -2168,6 +2229,19 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
             <option value="">Todas las personas</option>
             {personaOptions.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
           </select>
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className={clsx(
+              'max-w-[180px] rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
+              statusFilter
+                ? (STATUS_COLOR[statusFilter] ?? 'text-corporate-ink bg-white border-corporate-line')
+                : 'text-corporate-muted bg-white border-corporate-line',
+            )}
+          >
+            <option value="">Todos los estados</option>
+            {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
           <span className="text-xs text-corporate-muted whitespace-nowrap">
             {filtered.length}/{items.length} tickets
           </span>
@@ -2218,6 +2292,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
                 <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Proyecto</th>
+                <th className="min-w-[140px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Status</th>
                 <th className="min-w-[110px] px-3 py-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -2330,6 +2405,16 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                         proyectos={resumenProyectos}
                         onSaved={project =>
                           setItems(prev => prev.map(it => it.id === item.id ? { ...it, project } : it))
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-corporate-line/30">
+                      <StatusCell
+                        item={item}
+                        modulo={modulo}
+                        statusOptions={statusOptions}
+                        onSaved={patch =>
+                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...patch } : it))
                         }
                       />
                     </td>
