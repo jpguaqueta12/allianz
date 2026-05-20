@@ -286,13 +286,25 @@ def _responsables_trabajo(row: Any | dict, items: list[dict] | None = None) -> l
     return list(dict.fromkeys(name for name in names if name))
 
 
-async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[str, float]:
+async def _calcular_horas_asignadas_por_persona(
+    pool: Any, pi_id: int
+) -> tuple[dict[str, float], dict[str, list[dict]]]:
     """
     Suma la carga asignada en Mejora Continua y Fabrica en una sola query UNION ALL.
+
+    Devuelve (totales_horas_por_persona, asignaciones_por_persona). Cada asignación
+    contiene ticket_key, summary, módulo, perfil, horas, fechas y status para que
+    el frontend pueda mostrar el detalle expandible.
     """
     asignadas: dict[str, float] = {}
+    detalle: dict[str, list[dict]] = {}
     rows = await pool.fetch("""
         SELECT
+            'MEJORA_CONTINUA' AS modulo,
+            id, ticket_key, summary, status,
+            CONVERT(varchar(10), fecha_asignacion,   23) AS fecha_asignacion,
+            CONVERT(varchar(10), fecha_finalizacion, 23) AS fecha_finalizacion,
+            CONVERT(varchar(10), fecha_entrega,      23) AS fecha_entrega,
             extra, escalados, fecha_escalado, fecha_reinicio,
             responsable_java, responsable_cobol, responsable_dialogue,
             responsable_parametria, responsable_qa,
@@ -307,6 +319,11 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
         FROM backlog_mejora_continua WHERE pi_id = $1
         UNION ALL
         SELECT
+            'FABRICA' AS modulo,
+            id, ticket_key, summary, status,
+            CONVERT(varchar(10), fecha_asignacion,   23) AS fecha_asignacion,
+            CONVERT(varchar(10), fecha_finalizacion, 23) AS fecha_finalizacion,
+            CONVERT(varchar(10), fecha_entrega,      23) AS fecha_entrega,
             extra, escalados, fecha_escalado, fecha_reinicio,
             responsable_java, responsable_cobol, responsable_dialogue,
             responsable_parametria, responsable_qa,
@@ -323,14 +340,82 @@ async def _calcular_horas_asignadas_por_persona(pool: Any, pi_id: int) -> dict[s
     for row in rows:
         if _row_escalado_activo(row):
             continue
+        data = dict(row)
+        ticket_meta = {
+            "modulo": data.get("modulo"),
+            "ticket_key": data.get("ticket_key"),
+            "summary": data.get("summary"),
+            "status": data.get("status"),
+            "fecha_asignacion": data.get("fecha_asignacion"),
+            "fecha_finalizacion": data.get("fecha_finalizacion") or data.get("fecha_entrega"),
+        }
         items = _planificacion_items_from_extra(row["extra"])
         if items:
             for item in items:
                 nombre = item["responsable"]
                 asignadas[nombre] = asignadas.get(nombre, 0) + item["horas"]
+                detalle.setdefault(nombre, []).append({
+                    **ticket_meta,
+                    "perfil": item["perfil"],
+                    "fase": item["fase"],
+                    "horas": round(float(item["horas"]), 1),
+                    "tarea": item.get("tarea"),
+                    "subtarea": item.get("subtarea"),
+                    "fecha_inicio": item.get("fecha_inicio") or ticket_meta["fecha_asignacion"],
+                    "fecha_fin": item.get("fecha_fin") or ticket_meta["fecha_finalizacion"],
+                })
         else:
             _sumar_horas_legacy(row, asignadas)
-    return asignadas
+            for tech, hora_cols in TECH_HORA_COLS.items():
+                responsables = _split_responsables(data.get(f"responsable_{tech}"))
+                if not responsables:
+                    continue
+                horas_total = sum(float(data.get(col) or 0) for col in hora_cols)
+                if horas_total <= 0:
+                    continue
+                horas_split = round(horas_total / len(responsables), 1)
+                perfil = PLAN_PROFILE_ALIASES.get(tech, tech)
+                for nombre in responsables:
+                    detalle.setdefault(nombre, []).append({
+                        **ticket_meta,
+                        "perfil": perfil,
+                        "fase": "desarrollo",
+                        "horas": horas_split,
+                        "tarea": None,
+                        "subtarea": None,
+                        "fecha_inicio": ticket_meta["fecha_asignacion"],
+                        "fecha_fin": ticket_meta["fecha_finalizacion"],
+                    })
+    return asignadas, detalle
+
+
+def _merge_intervals(intervals: list[tuple[date, date]]) -> list[tuple[date, date]]:
+    if not intervals:
+        return []
+    ordered = sorted((s, e) for s, e in intervals if s and e and e >= s)
+    if not ordered:
+        return []
+    merged: list[tuple[date, date]] = [ordered[0]]
+    for start, end in ordered[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + timedelta(days=1):
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _clip_range(start: date | None, end: date | None, pi_inicio: date | None, pi_fin: date | None) -> tuple[date, date] | None:
+    if not start or not end:
+        return None
+    s, e = start, end
+    if pi_inicio and s < pi_inicio:
+        s = pi_inicio
+    if pi_fin and e > pi_fin:
+        e = pi_fin
+    if e < s:
+        return None
+    return s, e
 
 
 async def _calcular_novedades_por_persona(pool: Any, pi_id: int) -> dict[int, float]:
@@ -368,13 +453,27 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
     if not pi_id:
         return []
 
-    asignadas = await _calcular_horas_asignadas_por_persona(pool, pi_id)
+    asignadas, asignaciones_detalle = await _calcular_horas_asignadas_por_persona(pool, pi_id)
     novedades = await _calcular_novedades_por_persona(pool, pi_id)
     pi_row = await pool.fetchrow("SELECT fecha_inicio, fecha_fin FROM pi WHERE id = $1", pi_id)
     festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)
     festivos = {f["fecha"] for f in festivos_rows}
     pi_inicio = _as_date(pi_row["fecha_inicio"]) if pi_row else None
     pi_fin = _as_date(pi_row["fecha_fin"]) if pi_row else None
+
+    novedades_rows = await pool.fetch("""
+        SELECT persona_id, tipo,
+            CONVERT(varchar(10), fecha_inicio, 23) AS fecha_inicio,
+            CONVERT(varchar(10), fecha_fin,    23) AS fecha_fin
+        FROM disponibilidad_novedades WHERE pi_id = $1
+    """, pi_id)
+    novedades_por_persona: dict[int, list[dict]] = {}
+    for nr in novedades_rows:
+        novedades_por_persona.setdefault(nr["persona_id"], []).append({
+            "tipo": nr["tipo"],
+            "fecha_inicio": nr["fecha_inicio"],
+            "fecha_fin": nr["fecha_fin"],
+        })
     rows = await pool.fetch("""
         SELECT
             per.id,
@@ -431,6 +530,42 @@ async def get_capacidad_personas(pool: Any, modulo: str = 'MEJORA_CONTINUA', pi_
         item["consumo_total"] = consumo_total
         item["horas_disponibles"] = horas_disponibles
         item["estado"] = estado
+
+        asignaciones_persona = list(asignaciones_detalle.get(item["nombre"], []))
+        asignaciones_persona.sort(
+            key=lambda a: (a.get("fecha_inicio") or "9999-12-31", a.get("ticket_key") or "")
+        )
+        item["asignaciones"] = asignaciones_persona
+
+        intervalos_ticket: list[tuple[date, date]] = []
+        for a in asignaciones_persona:
+            clipped = _clip_range(
+                _as_date(a.get("fecha_inicio")),
+                _as_date(a.get("fecha_fin")),
+                pi_inicio,
+                pi_fin,
+            )
+            if clipped:
+                intervalos_ticket.append(clipped)
+
+        intervalos_novedad: list[tuple[date, date]] = []
+        for nv in novedades_por_persona.get(item["id"], []):
+            clipped = _clip_range(
+                _as_date(nv.get("fecha_inicio")),
+                _as_date(nv.get("fecha_fin")),
+                pi_inicio,
+                pi_fin,
+            )
+            if clipped:
+                intervalos_novedad.append(clipped)
+
+        periodos = []
+        for s, e in _merge_intervals(intervalos_ticket):
+            periodos.append({"desde": s.isoformat(), "hasta": e.isoformat(), "motivo": "TICKET"})
+        for s, e in _merge_intervals(intervalos_novedad):
+            periodos.append({"desde": s.isoformat(), "hasta": e.isoformat(), "motivo": "NOVEDAD"})
+        periodos.sort(key=lambda p: (p["desde"], p["hasta"]))
+        item["periodos_ocupados"] = periodos
         result.append(item)
     return result
 
@@ -740,7 +875,7 @@ async def get_responsables_disponibles(pool: Any, modulo: str, pi_id: int | None
         ORDER BY p.tecnologia, p.nombre
     """, pi_id)
 
-    asignadas = await _calcular_horas_asignadas_por_persona(pool, pi_id)
+    asignadas, _ = await _calcular_horas_asignadas_por_persona(pool, pi_id)
     novedades = await _calcular_novedades_por_persona(pool, pi_id)
     pi_row = await pool.fetchrow("SELECT fecha_inicio, fecha_fin FROM pi WHERE id = $1", pi_id)
     festivos_rows = await pool.fetch("SELECT fecha FROM festivos WHERE pi_id = $1", pi_id)

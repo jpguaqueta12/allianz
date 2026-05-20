@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   UserPlus, Trash2, Check, X, AlertTriangle, RefreshCw, Search,
-  Users, Gauge, Clock3, Activity, Layers, ListFilter,
+  Users, Gauge, Clock3, Activity, Layers, ListFilter, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { PersonaCapacidad } from '../../types'
+import { AsignacionPersona, PersonaCapacidad, PeriodoOcupado, PiInfo } from '../../types'
 import { DataPanel, KpiCard, StatusBadge } from '../ui/Corporate'
 import {
   createNovedadDisponibilidad,
@@ -71,6 +71,7 @@ interface Props {
   horasPorPersona?: number
   onRefresh?: () => void
   modulo?: string
+  pi?: PiInfo | null
 }
 
 const estadoColor: Record<string, string> = {
@@ -587,6 +588,144 @@ function CapacitySummary({
   )
 }
 
+function diffDays(a: Date, b: Date) {
+  return Math.round((a.getTime() - b.getTime()) / 86_400_000)
+}
+
+function parseISO(d: string | null | undefined): Date | null {
+  if (!d) return null
+  const dt = new Date(`${d}T00:00:00`)
+  return Number.isNaN(dt.getTime()) ? null : dt
+}
+
+function formatShortDate(iso: string | null | undefined) {
+  const d = parseISO(iso)
+  if (!d) return '—'
+  return d.toLocaleDateString('es', { day: '2-digit', month: 'short' })
+}
+
+function TimelineStrip({
+  pi,
+  periodos,
+}: {
+  pi: PiInfo
+  periodos: PeriodoOcupado[]
+}) {
+  const start = parseISO(pi.fecha_inicio)
+  const end = parseISO(pi.fecha_fin)
+  if (!start || !end) return null
+  const totalDays = Math.max(diffDays(end, start) + 1, 1)
+  return (
+    <div className="space-y-1">
+      <div className="relative h-4 rounded bg-green-50 ring-1 ring-green-100">
+        {periodos.map((p, idx) => {
+          const s = parseISO(p.desde)
+          const e = parseISO(p.hasta)
+          if (!s || !e) return null
+          const leftDays = Math.max(diffDays(s, start), 0)
+          const widthDays = Math.max(diffDays(e, s) + 1, 1)
+          const left = (leftDays / totalDays) * 100
+          const width = (widthDays / totalDays) * 100
+          const color =
+            p.motivo === 'NOVEDAD' ? 'bg-amber-400' : 'bg-allianz-blue/70'
+          return (
+            <div
+              key={idx}
+              className={clsx('absolute top-0 h-full rounded', color)}
+              style={{ left: `${left}%`, width: `${Math.max(width, 0.6)}%` }}
+              title={`${p.motivo === 'NOVEDAD' ? 'Novedad' : 'Asignación'}: ${p.desde} → ${p.hasta}`}
+            />
+          )
+        })}
+      </div>
+      <div className="flex justify-between text-[10px] text-corporate-muted">
+        <span>{formatShortDate(pi.fecha_inicio)}</span>
+        <span>{formatShortDate(pi.fecha_fin)}</span>
+      </div>
+    </div>
+  )
+}
+
+function AsignacionesList({ asignaciones }: { asignaciones: AsignacionPersona[] }) {
+  if (!asignaciones.length) {
+    return <p className="text-xs text-corporate-muted">Sin asignaciones registradas.</p>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="corporate-table">
+        <thead>
+          <tr>
+            {['KEY', 'Resumen', 'Módulo', 'Perfil', 'Fase', 'Inicio', 'Fin', 'Horas', 'Estado'].map(h => (
+              <th key={h}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {asignaciones.map((a, idx) => (
+            <tr key={`${a.ticket_key ?? 'noid'}-${idx}`}>
+              <td className="whitespace-nowrap font-mono text-[11px] font-medium text-allianz-blue">{a.ticket_key ?? '—'}</td>
+              <td className="max-w-[260px] truncate text-corporate-ink" title={a.summary ?? ''}>{a.summary ?? '—'}</td>
+              <td><StatusBadge tone={a.modulo === 'FABRICA' ? 'blue' : 'purple'}>{a.modulo === 'MEJORA_CONTINUA' ? 'Mejora' : 'Fábrica'}</StatusBadge></td>
+              <td className="text-corporate-muted">{a.perfil}</td>
+              <td className="text-corporate-muted">{a.fase}</td>
+              <td className="font-mono">{formatShortDate(a.fecha_inicio)}</td>
+              <td className="font-mono">{formatShortDate(a.fecha_fin)}</td>
+              <td className="text-right font-mono">{formatHours(a.horas)}</td>
+              <td>{a.status ? <StatusBadge tone="neutral">{a.status}</StatusBadge> : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function PersonaDetalleRow({
+  persona,
+  pi,
+  colSpan,
+}: {
+  persona: PersonaCapacidad
+  pi?: PiInfo | null
+  colSpan: number
+}) {
+  const asignaciones = persona.asignaciones ?? []
+  const periodos = persona.periodos_ocupados ?? []
+  return (
+    <tr className="bg-corporate-surface/60">
+      <td colSpan={colSpan} className="px-4 py-4">
+        <div className="space-y-4">
+          {pi && (
+            <div>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-corporate-muted">
+                Periodos no disponibles · {pi.nombre}
+              </p>
+              {periodos.length === 0 ? (
+                <p className="text-xs text-green-700">Sin asignaciones ni novedades dentro del PI.</p>
+              ) : (
+                <TimelineStrip pi={pi} periodos={periodos} />
+              )}
+              {periodos.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-corporate-muted">
+                  <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded bg-allianz-blue/70" /> Asignaciones</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded bg-amber-400" /> Novedades</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-3 rounded bg-green-50 ring-1 ring-green-200" /> Disponible</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-corporate-muted">
+              KEYs asignados ({asignaciones.length})
+            </p>
+            <AsignacionesList asignaciones={asignaciones} />
+          </div>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 function CapacityTable({
   title,
   description,
@@ -596,6 +735,9 @@ function CapacityTable({
   horasPorPersona,
   onRemove,
   onAdd,
+  pi,
+  expandedId,
+  onToggleExpand,
 }: {
   title: string
   description: string
@@ -605,14 +747,19 @@ function CapacityTable({
   horasPorPersona: number
   onRemove: (persona: PersonaCapacidad) => void
   onAdd: () => void
+  pi?: PiInfo | null
+  expandedId: number | null
+  onToggleExpand: (personaId: number) => void
 }) {
+  const hasActions = !!(piId && onRefresh)
+  const totalCols = 1 + 8 + (hasActions ? 1 : 0)
   return (
     <DataPanel title={title} description={description}>
       <div className="overflow-x-auto">
         <table className="corporate-table">
           <thead>
             <tr>
-              {['Nombre', 'Tecnología', 'Capacidad / Reserva', 'Carga', 'Novedades', 'Disponible', 'Ocupación', 'Estado', ...(piId && onRefresh ? [''] : [])].map((h, i) => (
+              {['', 'Nombre', 'Tecnología', 'Capacidad / Reserva', 'Carga', 'Novedades', 'Disponible', 'Ocupación', 'Estado', ...(hasActions ? [''] : [])].map((h, i) => (
                 <th key={i}>{h}</th>
               ))}
             </tr>
@@ -620,7 +767,7 @@ function CapacityTable({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center">
+                <td colSpan={totalCols} className="px-3 py-6 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <p className="text-xs text-corporate-muted">Sin personas para este filtro.</p>
                     {piId && onRefresh && (
@@ -635,13 +782,28 @@ function CapacityTable({
                   </div>
                 </td>
               </tr>
-            ) : rows.map((p) => {
+            ) : rows.flatMap((p) => {
               const pct = ocupacionPct(p)
               const capDiffersFromPi = horasPorPersona != null && p.capacidad != null && p.capacidad !== horasPorPersona
               const disponible = p.horas_disponibles ?? null
               const over = Math.max(0, -(disponible ?? 0))
-              return (
+              const isExpanded = expandedId === p.id
+              const numAsignaciones = p.asignaciones?.length ?? 0
+              const rowEls = [
                 <tr key={p.id} className="hover:bg-corporate-surface">
+                  <td className="w-8">
+                    <button
+                      type="button"
+                      onClick={() => onToggleExpand(p.id)}
+                      className="inline-flex items-center gap-1 rounded p-1 text-corporate-muted hover:bg-corporate-line/50 hover:text-corporate-ink"
+                      title={isExpanded ? 'Ocultar detalle' : 'Ver KEYs y disponibilidad'}
+                    >
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      {numAsignaciones > 0 && (
+                        <span className="rounded bg-blue-50 px-1 text-[10px] font-semibold text-allianz-blue">{numAsignaciones}</span>
+                      )}
+                    </button>
+                  </td>
                   <td className="whitespace-nowrap font-medium text-corporate-ink">{p.nombre}</td>
                   <td><StatusBadge tone={tecnologiaTone(p.tecnologia) as never}>{tecnologiaLabel(p.tecnologia)}</StatusBadge></td>
                   <td className="font-mono">
@@ -687,8 +849,14 @@ function CapacityTable({
                       </button>
                     </td>
                   )}
-                </tr>
-              )
+                </tr>,
+              ]
+              if (isExpanded) {
+                rowEls.push(
+                  <PersonaDetalleRow key={`${p.id}-detalle`} persona={p} pi={pi} colSpan={totalCols} />,
+                )
+              }
+              return rowEls
             })}
           </tbody>
         </table>
@@ -697,7 +865,7 @@ function CapacityTable({
   )
 }
 
-export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh, modulo = 'FABRICA' }: Props) {
+export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh, modulo = 'FABRICA', pi }: Props) {
   const [showForm, setShowForm] = useState(false)
   const [confirm, setConfirm] = useState<{ id: number; nombre: string } | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -706,6 +874,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
   const [vista, setVista] = useState<VistaCapacidad>('riesgo')
   const [filtro, setFiltro] = useState<FiltroCapacidad>('TODOS')
   const [search, setSearch] = useState('')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const toggleExpand = (personaId: number) =>
+    setExpandedId(prev => (prev === personaId ? null : personaId))
 
   const filtered = sortByRisk(personas).filter(p => {
     if (filtro === 'CALIDAD' && p.tecnologia !== 'CALIDAD' && p.tecnologia !== 'QA') return false
@@ -870,6 +1041,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
           horasPorPersona={horasPorPersona}
           onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
           onAdd={() => setShowForm(true)}
+          pi={pi}
+          expandedId={expandedId}
+          onToggleExpand={toggleExpand}
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
@@ -882,6 +1056,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
             horasPorPersona={horasPorPersona}
             onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
             onAdd={() => setShowForm(true)}
+            pi={pi}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
           />
           <CapacityTable
             title="Equipo JAVA"
@@ -892,6 +1069,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
             horasPorPersona={horasPorPersona}
             onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
             onAdd={() => setShowForm(true)}
+            pi={pi}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
           />
           <CapacityTable
             title="Calidad"
@@ -902,6 +1082,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
             horasPorPersona={horasPorPersona}
             onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
             onAdd={() => setShowForm(true)}
+            pi={pi}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
           />
           <CapacityTable
             title="Gestión"
@@ -912,6 +1095,9 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
             horasPorPersona={horasPorPersona}
             onRemove={p => setConfirm({ id: p.id, nombre: p.nombre })}
             onAdd={() => setShowForm(true)}
+            pi={pi}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
           />
         </div>
       )}

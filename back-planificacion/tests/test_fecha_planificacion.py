@@ -179,7 +179,7 @@ class FechaPlanificacionTests(unittest.TestCase):
                 "fecha_reinicio": None,
             }]
 
-            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+            asignadas, _ = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
 
             self.assertEqual(asignadas["Ana Perez"], 16)
             self.assertEqual(asignadas["Luis Gomez"], 4)
@@ -200,7 +200,7 @@ class FechaPlanificacionTests(unittest.TestCase):
                 "responsable_qa": None,
             }]
 
-            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+            asignadas, _ = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
 
             self.assertEqual(asignadas, {})
 
@@ -219,7 +219,7 @@ class FechaPlanificacionTests(unittest.TestCase):
                 "fecha_reinicio": None,
             }]
 
-            asignadas = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
+            asignadas, _ = await _calcular_horas_asignadas_por_persona(FakePool(rows), 1)
 
             self.assertEqual(asignadas, {})
 

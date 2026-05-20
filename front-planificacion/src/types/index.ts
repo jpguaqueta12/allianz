@@ -1,3 +1,23 @@
+export interface AsignacionPersona {
+  modulo: 'MEJORA_CONTINUA' | 'FABRICA' | string | null
+  ticket_key: string | null
+  summary: string | null
+  status: string | null
+  perfil: string
+  fase: string
+  horas: number
+  tarea: string | null
+  subtarea: string | null
+  fecha_inicio: string | null
+  fecha_fin: string | null
+}
+
+export interface PeriodoOcupado {
+  desde: string
+  hasta: string
+  motivo: 'TICKET' | 'NOVEDAD'
+}
+
 export interface PersonaCapacidad {
   id: number
   nombre: string
@@ -14,6 +34,8 @@ export interface PersonaCapacidad {
   horas_disponibles: number | null
   senior: boolean
   estado: 'DISPONIBLE' | 'OCUPADO' | 'SOBRECARGADO' | 'LIDER TECNICO' | 'SIN CAPACIDAD'
+  asignaciones?: AsignacionPersona[]
+  periodos_ocupados?: PeriodoOcupado[]
 }
 
 export interface ResumenProyecto {
