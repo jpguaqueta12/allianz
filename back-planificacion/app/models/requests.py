@@ -125,6 +125,7 @@ class PlanificacionItemRequest(BaseModel):
     fecha_inicio: Optional[str] = None
     fecha_fin: Optional[str] = None
     fecha_escalamiento: Optional[str] = None
+    pi: Optional[str] = None
 
 
 class PlanificacionRequest(BaseModel):
@@ -164,3 +165,4 @@ class PlanItemPatchRequest(BaseModel):
     fecha_inicio: Optional[str] = None
     fecha_fin: Optional[str] = None
     status: Optional[str] = None
+    pi: Optional[str] = None

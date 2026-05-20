@@ -245,6 +245,7 @@ def _planificacion_items_from_extra(extra: object) -> list[dict]:
                 "fecha_inicio": item.get("fecha_inicio") or None,
                 "fecha_fin": item.get("fecha_fin") or None,
                 "fecha_escalamiento": item.get("fecha_escalamiento") or None,
+                "pi": (item.get("pi") or "").strip() or None,
             })
     return result
 
@@ -363,6 +364,7 @@ async def _calcular_horas_asignadas_por_persona(
                     "tarea": item.get("tarea"),
                     "subtarea": item.get("subtarea"),
                     "plan_status": item.get("status"),
+                    "pi": item.get("pi"),
                     "fecha_inicio": item.get("fecha_inicio") or ticket_meta["fecha_asignacion"],
                     "fecha_fin": item.get("fecha_fin") or ticket_meta["fecha_finalizacion"],
                 })
@@ -387,6 +389,7 @@ async def _calcular_horas_asignadas_por_persona(
                         "tarea": None,
                         "subtarea": None,
                         "plan_status": None,
+                        "pi": None,
                         "fecha_inicio": ticket_meta["fecha_asignacion"],
                         "fecha_fin": ticket_meta["fecha_finalizacion"],
                     })
@@ -1156,7 +1159,7 @@ async def patch_planificacion_item(
     items = extra_data.get("planificacion_items") or []
     if not isinstance(items, list) or item_index < 0 or item_index >= len(items):
         raise ValueError(f"Plan item index {item_index} fuera de rango (hay {len(items)} items)")
-    allowed = {"fecha_inicio", "fecha_fin", "status"}
+    allowed = {"fecha_inicio", "fecha_fin", "status", "pi"}
     for key, value in changes.items():
         if key in allowed:
             items[item_index][key] = value or None

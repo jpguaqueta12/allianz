@@ -362,6 +362,7 @@ export interface PlanificacionItem {
   fecha_inicio?: string | null
   fecha_fin?: string | null
   fecha_escalamiento?: string | null
+  pi?: string | null
 }
 
 export interface PlanificacionData {
@@ -531,12 +532,13 @@ export async function patchPlanificacionItem(
   modulo: string,
   ticketId: number,
   itemIndex: number,
-  changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null },
+  changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null; pi?: string | null },
 ): Promise<void> {
   const body: Record<string, string | null> = {}
   if ('fecha_inicio' in changes) body.fecha_inicio = changes.fecha_inicio ?? null
   if ('fecha_fin' in changes) body.fecha_fin = changes.fecha_fin ?? null
   if ('status' in changes) body.status = changes.status ?? null
+  if ('pi' in changes) body.pi = changes.pi ?? null
   const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/planificacion/item/${itemIndex}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

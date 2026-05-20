@@ -664,12 +664,13 @@ function AsignacionRow({
 }) {
   const [saving, setSaving] = useState(false)
   const [localStatus, setLocalStatus] = useState(asignacion.plan_status ?? '')
+  const [localPi, setLocalPi] = useState(asignacion.pi ?? '')
   const [localInicio, setLocalInicio] = useState(asignacion.fecha_inicio ?? '')
   const [localFin, setLocalFin] = useState(asignacion.fecha_fin ?? '')
 
   const canEdit = asignacion.backlog_item_id != null && asignacion.plan_item_index != null
 
-  async function save(changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null }) {
+  async function save(changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null; pi?: string | null }) {
     if (!canEdit) return
     setSaving(true)
     try {
@@ -740,6 +741,21 @@ function AsignacionRow({
           localStatus ? <StatusBadge tone={PLAN_STATUS_TONE[localStatus] as never}>{localStatus}</StatusBadge> : <span className="text-corporate-muted">—</span>
         )}
       </td>
+      <td>
+        {canEdit ? (
+          <input
+            type="text"
+            value={localPi}
+            disabled={saving}
+            onChange={e => setLocalPi(e.target.value)}
+            onBlur={() => save({ pi: localPi.trim() || null })}
+            placeholder="—"
+            className="w-24 rounded border border-corporate-line px-1 py-0.5 text-[11px] text-corporate-ink placeholder:text-corporate-muted disabled:bg-gray-50"
+          />
+        ) : (
+          <span className="text-[11px] text-corporate-muted">{localPi || '—'}</span>
+        )}
+      </td>
     </tr>
   )
 }
@@ -753,7 +769,7 @@ function AsignacionesList({ asignaciones, onRefresh }: { asignaciones: Asignacio
       <table className="corporate-table">
         <thead>
           <tr>
-            {['KEY', 'Resumen', 'Módulo', 'Perfil', 'Fase', 'Inicio', 'Fin', 'Horas', 'Status'].map(h => (
+            {['KEY', 'Resumen', 'Módulo', 'Perfil', 'Fase', 'Inicio', 'Fin', 'Horas', 'Status', 'PI'].map(h => (
               <th key={h}>{h}</th>
             ))}
           </tr>

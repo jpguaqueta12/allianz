@@ -10,6 +10,7 @@ export interface AsignacionPersona {
   tarea: string | null
   subtarea: string | null
   plan_status: string | null
+  pi: string | null
   fecha_inicio: string | null
   fecha_fin: string | null
 }
