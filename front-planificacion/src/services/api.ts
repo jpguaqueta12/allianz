@@ -242,22 +242,51 @@ export interface SlaTicket {
   }
 }
 
+export interface SlaSubtask {
+  id: string
+  ticket_id: number
+  ticket_key: string | null
+  summary: string
+  tarea: string | null
+  subtarea: string | null
+  responsable: string | null
+  perfil: string | null
+  horas: number | null
+  status: string | null
+  fecha_inicio_sla: string | null
+  fecha_limite_sla: string | null
+  fecha_escalamiento: string | null
+  sla_dias: number
+  pausa_dias: number
+  consumido_dias: number
+  restante_dias: number | null
+  progreso_pct: number
+  estado_sla: SlaTicket['estado_sla']
+  policy: SlaTicket['policy']
+}
+
+export interface SlaSummary {
+  total: number
+  por_estado: Record<string, number>
+  cumplidos: number
+  incumplidos: number
+  vencidos: number
+  en_riesgo: number
+  pausados: number
+  sin_inicio: number
+  abiertos: number
+  cumplimiento_pct: number
+}
+
 export interface SlaReport {
   modulo: string
   pi_id: number | null
   fecha_referencia: string
   policies: SlaPolicy[]
-  summary: {
-    total: number
-    por_estado: Record<string, number>
-    cumplidos: number
-    incumplidos: number
-    vencidos: number
-    en_riesgo: number
-    pausados: number
-    sin_inicio: number
-    abiertos: number
-    cumplimiento_pct: number
+  summary: SlaSummary
+  subtasks?: {
+    summary: SlaSummary
+    items: SlaSubtask[]
   }
   tickets: SlaTicket[]
 }

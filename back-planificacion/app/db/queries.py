@@ -1319,17 +1319,17 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
     today = date.today()
     backlog = await get_backlog(pool, mod, pi_id)
     tickets = []
+    subtasks = []
 
-    for item in backlog:
-        policy = select_policy(item)
-        start = _as_date(item.get("fecha_asignacion")) or _as_date((item.get("created") or "")[:10])
-        committed = _as_date(item.get("fecha_finalizacion_inicial"))
-        fin_real = _as_date(item.get("fecha_finalizacion"))
-        entrega = _as_date(item.get("fecha_entrega"))
-        escalado = _as_date(item.get("fecha_escalado"))
-        reinicio = _as_date(item.get("fecha_reinicio"))
-        close_date = fin_real or entrega
-        status = item.get("status")
+    def build_sla_state(
+        start: date | None,
+        deadline: date | None,
+        close_date: date | None,
+        status: str | None,
+        escalado: date | None,
+        reinicio: date | None,
+        policy: dict,
+    ) -> dict:
         finalizado = bool(close_date) or _is_finalizado_status(status)
         active_date = close_date or today
         pausa_dias = 0
@@ -1337,14 +1337,13 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
             pause_end = reinicio or active_date
             pausa_dias = _calendar_days_between(escalado, pause_end)
 
-        sla_dias = _calendar_days_between(start, committed) if start and committed else int(policy.get("sla_dias") or 10)
+        sla_dias = _calendar_days_between(start, deadline) if start and deadline else int(policy.get("sla_dias") or 10)
         sla_dias = max(sla_dias, 1)
-        deadline = committed
         consumido = _calendar_days_between(start, active_date) if start else 0
         restante = (deadline - active_date).days if deadline and not finalizado else None
         progreso = min(100, round((consumido / max(sla_dias, 1)) * 100)) if start else 0
 
-        if not start or not committed:
+        if not start or not deadline:
             estado_sla = "SIN_INICIO"
         elif escalado and not reinicio and not finalizado:
             estado_sla = "PAUSADO"
@@ -1356,6 +1355,35 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
             estado_sla = "EN_RIESGO"
         else:
             estado_sla = "EN_TIEMPO"
+
+        return {
+            "sla_dias": sla_dias,
+            "pausa_dias": pausa_dias,
+            "consumido_dias": consumido,
+            "restante_dias": restante,
+            "progreso_pct": progreso,
+            "estado_sla": estado_sla,
+        }
+
+    for item in backlog:
+        policy = select_policy(item)
+        start = _as_date(item.get("fecha_asignacion")) or _as_date((item.get("created") or "")[:10])
+        committed = _as_date(item.get("fecha_finalizacion_inicial"))
+        fin_real = _as_date(item.get("fecha_finalizacion"))
+        entrega = _as_date(item.get("fecha_entrega"))
+        escalado = _as_date(item.get("fecha_escalado"))
+        reinicio = _as_date(item.get("fecha_reinicio"))
+        status = item.get("status")
+        deadline = committed
+        sla_state = build_sla_state(
+            start=start,
+            deadline=deadline,
+            close_date=fin_real or entrega,
+            status=status,
+            escalado=escalado,
+            reinicio=reinicio,
+            policy=policy,
+        )
 
         tickets.append({
             "id": item.get("id"),
@@ -1372,12 +1400,7 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
             "fecha_entrega": entrega.isoformat() if entrega else None,
             "fecha_escalado": item.get("fecha_escalado"),
             "fecha_reinicio": item.get("fecha_reinicio"),
-            "sla_dias": sla_dias,
-            "pausa_dias": pausa_dias,
-            "consumido_dias": consumido,
-            "restante_dias": restante,
-            "progreso_pct": progreso,
-            "estado_sla": estado_sla,
+            **sla_state,
             "policy": {
                 "id": policy.get("id"),
                 "nombre": policy.get("nombre"),
@@ -1388,12 +1411,59 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
             },
         })
 
+        for idx, plan in enumerate(item.get("planificacion_items") or [], start=1):
+            sub_status = plan.get("status")
+            sub_start = _as_date(plan.get("fecha_inicio")) or start
+            sub_deadline = _as_date(plan.get("fecha_fin")) or deadline
+            sub_escalado = _as_date(plan.get("fecha_escalamiento")) or escalado
+            sub_done = str(sub_status or "").strip().lower() in {"done", "finalizado", "finalizada", "cerrado", "cerrada", "cancelled", "canceled"}
+            sub_close_date = sub_deadline if sub_done else None
+            sub_state = build_sla_state(
+                start=sub_start,
+                deadline=sub_deadline,
+                close_date=sub_close_date,
+                status=sub_status,
+                escalado=sub_escalado,
+                reinicio=reinicio if sub_escalado == escalado else None,
+                policy=policy,
+            )
+            subtasks.append({
+                "id": f"{item.get('id')}-{idx}",
+                "ticket_id": item.get("id"),
+                "ticket_key": item.get("ticket_key"),
+                "summary": item.get("summary"),
+                "tarea": plan.get("tarea"),
+                "subtarea": plan.get("subtarea"),
+                "responsable": plan.get("responsable"),
+                "perfil": plan.get("perfil"),
+                "horas": plan.get("horas"),
+                "status": sub_status,
+                "fecha_inicio_sla": sub_start.isoformat() if sub_start else None,
+                "fecha_limite_sla": sub_deadline.isoformat() if sub_deadline else None,
+                "fecha_escalamiento": sub_escalado.isoformat() if sub_escalado else None,
+                **sub_state,
+                "policy": {
+                    "id": policy.get("id"),
+                    "nombre": policy.get("nombre"),
+                    "issue_type": policy.get("issue_type"),
+                    "priority": policy.get("priority"),
+                    "alerta_pct": policy.get("alerta_pct"),
+                    "pausa_escalado": policy.get("pausa_escalado"),
+                },
+            })
+
     counts: dict[str, int] = {}
     for ticket in tickets:
         key = ticket["estado_sla"]
         counts[key] = counts.get(key, 0) + 1
 
     abiertos = [t for t in tickets if t["estado_sla"] not in {"CUMPLIDO", "INCUMPLIDO"}]
+    sub_counts: dict[str, int] = {}
+    for subtask in subtasks:
+        key = subtask["estado_sla"]
+        sub_counts[key] = sub_counts.get(key, 0) + 1
+    sub_abiertos = [t for t in subtasks if t["estado_sla"] not in {"CUMPLIDO", "INCUMPLIDO"}]
+
     summary = {
         "total": len(tickets),
         "por_estado": dict(sorted(counts.items())),
@@ -1405,6 +1475,18 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
         "sin_inicio": counts.get("SIN_INICIO", 0),
         "abiertos": len(abiertos),
         "cumplimiento_pct": round((counts.get("CUMPLIDO", 0) / max(counts.get("CUMPLIDO", 0) + counts.get("INCUMPLIDO", 0), 1)) * 100),
+    }
+    subtasks_summary = {
+        "total": len(subtasks),
+        "por_estado": dict(sorted(sub_counts.items())),
+        "cumplidos": sub_counts.get("CUMPLIDO", 0),
+        "incumplidos": sub_counts.get("INCUMPLIDO", 0),
+        "vencidos": sub_counts.get("VENCIDO", 0),
+        "en_riesgo": sub_counts.get("EN_RIESGO", 0),
+        "pausados": sub_counts.get("PAUSADO", 0),
+        "sin_inicio": sub_counts.get("SIN_INICIO", 0),
+        "abiertos": len(sub_abiertos),
+        "cumplimiento_pct": round((sub_counts.get("CUMPLIDO", 0) / max(sub_counts.get("CUMPLIDO", 0) + sub_counts.get("INCUMPLIDO", 0), 1)) * 100),
     }
     await pool.execute("""
         IF EXISTS (
@@ -1425,6 +1507,10 @@ async def get_sla_report(pool: Any, modulo: str, pi_id: int | None = None) -> di
         "policies": policies,
         "summary": summary,
         "tickets": tickets,
+        "subtasks": {
+            "summary": subtasks_summary,
+            "items": subtasks,
+        },
     }
 
 

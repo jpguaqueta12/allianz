@@ -4,7 +4,7 @@ import {
   Filter, Loader2, PauseCircle, RefreshCw, ShieldCheck, TimerReset, XCircle,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { getSlaReport, SlaReport, SlaTicket } from '../../services/api'
+import { getSlaReport, SlaReport, SlaSubtask, SlaTicket } from '../../services/api'
 import { DataPanel, KpiCard, StatusBadge } from '../ui/Corporate'
 
 interface Props {
@@ -51,6 +51,26 @@ function downloadCsv(filename: string, rows: SlaTicket[]) {
     ticket.consumido_dias, ticket.restante_dias, ticket.pausa_dias,
     ticket.fecha_inicio_sla, ticket.fecha_limite_sla, ticket.fecha_comprometida_cliente, ticket.fecha_fin_real, ticket.fecha_entrega,
     ticket.fecha_escalado, ticket.fecha_reinicio, ticket.policy.nombre,
+  ].map(csvCell).join(','))
+  const blob = new Blob([[headers.map(csvCell).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function downloadSubtasksCsv(filename: string, rows: SlaSubtask[]) {
+  const headers = [
+    'ticket_key', 'summary', 'tarea', 'subtarea', 'responsable', 'perfil', 'horas',
+    'status', 'estado_sla', 'sla_dias', 'consumido_dias', 'restante_dias', 'pausa_dias',
+    'fecha_inicio_sla', 'fecha_limite_sla', 'fecha_escalamiento', 'policy',
+  ]
+  const body = rows.map(row => [
+    row.ticket_key, row.summary, row.tarea, row.subtarea, row.responsable, row.perfil, row.horas,
+    row.status, row.estado_sla, row.sla_dias, row.consumido_dias, row.restante_dias, row.pausa_dias,
+    row.fecha_inicio_sla, row.fecha_limite_sla, row.fecha_escalamiento, row.policy.nombre,
   ].map(csvCell).join(','))
   const blob = new Blob([[headers.map(csvCell).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -169,6 +189,61 @@ function SlaTable({ rows }: { rows: SlaTicket[] }) {
   )
 }
 
+function SlaSubtasksTable({ rows }: { rows: SlaSubtask[] }) {
+  return (
+    <DataPanel title="Detalle SLA subtareas" description={`${rows.length} subtarea${rows.length !== 1 ? 's' : ''}`}>
+      <div className="overflow-x-auto">
+        <table className="corporate-table">
+          <thead>
+            <tr>
+              {['Key', 'Subtarea', 'Responsable', 'SLA', 'Status', 'Inicio', 'Fin plan', 'Esc.', 'Restante', 'Progreso'].map(h => <th key={h}>{h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-xs text-corporate-muted">Sin subtareas para este filtro.</td></tr>
+            ) : rows.slice(0, 120).map(row => (
+              <tr key={row.id} className="hover:bg-corporate-surface">
+                <td>
+                  <p className="font-mono text-xs font-semibold text-allianz-blue">{row.ticket_key ?? `#${row.ticket_id}`}</p>
+                  <p className="mt-0.5 line-clamp-1 max-w-[220px] text-[11px] text-corporate-muted" title={row.summary}>{row.summary}</p>
+                </td>
+                <td>
+                  <p className="line-clamp-1 max-w-[240px] text-xs font-medium text-corporate-ink" title={row.subtarea ?? row.tarea ?? ''}>{row.subtarea ?? row.tarea ?? '-'}</p>
+                  <p className="mt-0.5 text-[11px] text-corporate-muted">{row.perfil ?? '-'} · {row.horas ?? 0}h</p>
+                </td>
+                <td className="text-xs">{row.responsable ?? '-'}</td>
+                <td><StatusBadge tone={ESTADO_TONE[row.estado_sla]}>{ESTADO_LABEL[row.estado_sla]}</StatusBadge></td>
+                <td><StatusBadge>{row.status ?? 'Sin status'}</StatusBadge></td>
+                <td className="font-mono text-xs">{row.fecha_inicio_sla ?? '-'}</td>
+                <td className="font-mono text-xs">{row.fecha_limite_sla ?? '-'}</td>
+                <td className="font-mono text-xs">{row.fecha_escalamiento ?? '-'}</td>
+                <td className={clsx('text-right font-mono', (row.restante_dias ?? 0) < 0 && 'font-bold text-red-700')}>
+                  {row.restante_dias ?? '-'}
+                </td>
+                <td className="min-w-[150px]">
+                  <div className="space-y-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-[11px] text-corporate-muted">{row.consumido_dias}/{row.sla_dias} días</span>
+                      <span className="font-mono text-xs">{row.progreso_pct}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-corporate-surface">
+                      <div
+                        className={clsx('h-2 rounded-full', row.progreso_pct > 100 ? 'bg-red-600' : row.progreso_pct > 70 ? 'bg-amber-500' : 'bg-green-500')}
+                        style={{ width: `${Math.min(row.progreso_pct, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </DataPanel>
+  )
+}
+
 export function SlaPanel({ modulo, piId, active }: Props) {
   const [report, setReport] = useState<SlaReport | null>(null)
   const [loading, setLoading] = useState(false)
@@ -201,10 +276,25 @@ export function SlaPanel({ modulo, piId, active }: Props) {
     return report.tickets.filter(ticket => ticket.estado_sla === filter)
   }, [report, filter])
 
+  const filteredSubtasks = useMemo(() => {
+    if (!report) return []
+    const items = report.subtasks?.items ?? []
+    if (filter === 'TODOS') return items
+    return items.filter(item => item.estado_sla === filter)
+  }, [report, filter])
+
   const critical = useMemo(() => {
     if (!report) return []
     return report.tickets
       .filter(ticket => ['VENCIDO', 'EN_RIESGO', 'PAUSADO', 'INCUMPLIDO'].includes(ticket.estado_sla))
+      .sort((a, b) => (a.restante_dias ?? 9999) - (b.restante_dias ?? 9999))
+      .slice(0, 8)
+  }, [report])
+
+  const criticalSubtasks = useMemo(() => {
+    if (!report) return []
+    return (report.subtasks?.items ?? [])
+      .filter(item => ['VENCIDO', 'EN_RIESGO', 'PAUSADO', 'INCUMPLIDO'].includes(item.estado_sla))
       .sort((a, b) => (a.restante_dias ?? 9999) - (b.restante_dias ?? 9999))
       .slice(0, 8)
   }, [report])
@@ -230,6 +320,18 @@ export function SlaPanel({ modulo, piId, active }: Props) {
   }
 
   if (!report) return null
+  const subtasksSummary = report.subtasks?.summary ?? {
+    total: 0,
+    por_estado: {},
+    cumplidos: 0,
+    incumplidos: 0,
+    vencidos: 0,
+    en_riesgo: 0,
+    pausados: 0,
+    sin_inicio: 0,
+    abiertos: 0,
+    cumplimiento_pct: 0,
+  }
 
   return (
     <div className="space-y-4">
@@ -243,6 +345,9 @@ export function SlaPanel({ modulo, piId, active }: Props) {
         <div className="flex flex-wrap gap-2">
           <button onClick={() => downloadCsv(`sla-${modulo.toLowerCase()}-${report.fecha_referencia}.csv`, filtered)} className="corporate-button-secondary">
             <Download size={14} /> Exportar CSV
+          </button>
+          <button onClick={() => downloadSubtasksCsv(`sla-subtareas-${modulo.toLowerCase()}-${report.fecha_referencia}.csv`, filteredSubtasks)} className="corporate-button-secondary">
+            <Download size={14} /> Exportar subtareas
           </button>
           <button onClick={load} disabled={loading} className="corporate-button-secondary">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualizar SLA
@@ -259,6 +364,20 @@ export function SlaPanel({ modulo, piId, active }: Props) {
         <KpiCard label="Sin inicio" value={report.summary.sin_inicio} icon={AlertTriangle} tone={report.summary.sin_inicio ? 'amber' : 'neutral'} detail="Sin compromiso o inicio" />
         <KpiCard label="Cerrados cumplidos" value={report.summary.cumplidos} icon={CheckCircle2} tone="green" detail="Fin real dentro del compromiso" />
         <KpiCard label="Cerrados incumplidos" value={report.summary.incumplidos} icon={XCircle} tone={report.summary.incumplidos ? 'red' : 'neutral'} detail="Fin real fuera del compromiso" />
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-corporate-muted">SLA por subtareas</p>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="Subtareas" value={subtasksSummary.total} icon={ShieldCheck} tone="blue" detail={`${subtasksSummary.abiertos} abiertas`} />
+          <KpiCard label="Subtareas vencidas" value={subtasksSummary.vencidos} icon={XCircle} tone={subtasksSummary.vencidos ? 'red' : 'green'} detail="Fecha fin de subtarea superada" />
+          <KpiCard label="Subtareas en riesgo" value={subtasksSummary.en_riesgo} icon={FileWarning} tone={subtasksSummary.en_riesgo ? 'amber' : 'neutral'} detail="Cerca de la fecha fin" />
+          <KpiCard label="Subtareas pausadas" value={subtasksSummary.pausados} icon={PauseCircle} tone={subtasksSummary.pausados ? 'amber' : 'neutral'} detail="Con escalamiento activo" />
+          <KpiCard label="Subtareas en tiempo" value={subtasksSummary.por_estado.EN_TIEMPO ?? 0} icon={Clock3} tone="green" detail="Abiertas sanas" />
+          <KpiCard label="Subtareas sin inicio" value={subtasksSummary.sin_inicio} icon={AlertTriangle} tone={subtasksSummary.sin_inicio ? 'amber' : 'neutral'} detail="Sin fecha inicio o fin" />
+          <KpiCard label="Subtareas cumplidas" value={subtasksSummary.cumplidos} icon={CheckCircle2} tone="green" detail={`${subtasksSummary.cumplimiento_pct}% cumplimiento`} />
+          <KpiCard label="Subtareas incumplidas" value={subtasksSummary.incumplidos} icon={XCircle} tone={subtasksSummary.incumplidos ? 'red' : 'neutral'} detail="Cerradas fuera de fecha" />
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
@@ -290,12 +409,37 @@ export function SlaPanel({ modulo, piId, active }: Props) {
         </div>
       </DataPanel>
 
+      <DataPanel title="Subtareas SLA críticas" icon={AlertTriangle}>
+        <div className="divide-y divide-corporate-line">
+          {criticalSubtasks.length === 0 ? (
+            <p className="p-4 text-xs text-corporate-muted">No hay subtareas SLA críticas.</p>
+          ) : criticalSubtasks.map(item => (
+            <button
+              type="button"
+              key={item.id}
+              onClick={() => setFilter(item.estado_sla)}
+              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-corporate-surface"
+            >
+              <div className="min-w-0">
+                <p className="font-mono text-xs font-semibold text-allianz-blue">{item.ticket_key ?? `#${item.ticket_id}`}</p>
+                <p className="mt-0.5 line-clamp-1 text-xs text-corporate-ink" title={item.subtarea ?? item.tarea ?? ''}>{item.subtarea ?? item.tarea ?? '-'}</p>
+                <p className="mt-0.5 text-[11px] text-corporate-muted">{item.responsable ?? '-'} · {item.perfil ?? '-'}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <StatusBadge tone={ESTADO_TONE[item.estado_sla]}>{ESTADO_LABEL[item.estado_sla]}</StatusBadge>
+                <p className="mt-1 font-mono text-[11px] text-corporate-muted">{item.restante_dias ?? '-'} días</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </DataPanel>
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-corporate-line bg-white px-3 py-2">
         <div className="flex items-center gap-2 text-xs text-corporate-muted">
           <Filter size={14} />
           <span>Filtro SLA:</span>
           <span className="font-semibold text-corporate-ink">{filter === 'TODOS' ? 'Todos' : ESTADO_LABEL[filter]}</span>
-          <span>({filtered.length})</span>
+          <span>({filtered.length} tickets · {filteredSubtasks.length} subtareas)</span>
         </div>
         {filter !== 'TODOS' && (
           <button type="button" onClick={() => setFilter('TODOS')} className="inline-flex items-center gap-1 text-xs text-corporate-muted hover:text-corporate-ink">
@@ -305,6 +449,7 @@ export function SlaPanel({ modulo, piId, active }: Props) {
       </div>
 
       <SlaTable rows={filtered} />
+      <SlaSubtasksTable rows={filteredSubtasks} />
     </div>
   )
 }
