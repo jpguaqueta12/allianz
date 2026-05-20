@@ -1953,7 +1953,7 @@ async def get_alertas(pool: Any, modulo: str, pi_id: int | None = None) -> list[
         FROM {table}
         WHERE fecha_finalizacion_inicial IS NOT NULL
           AND pi_id = $1
-        ORDER BY ticket_key NULLS LAST, summary
+        ORDER BY fecha_finalizacion_inicial ASC NULLS LAST, ticket_key NULLS LAST, summary
     """, pi_row["id"])
 
     today = date.today()

@@ -1,8 +1,14 @@
-import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, UserX, XCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock, Loader2, RefreshCw, UserX, XCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { AlertaItem, AlertaSinAsignacionItem } from '../../types'
-import { getAlertas, getAlertasSinAsignacion } from '../../services/api'
+import {
+  getAlertas,
+  getAlertasSinAsignacion,
+  updateFechaAsignacion,
+  updateFechaComprometidaCliente,
+  updateFechaFinalizacion,
+} from '../../services/api'
 
 // ── helpers de presentación ───────────────────────────────────────────────────
 
@@ -84,6 +90,96 @@ function matchFiltro(item: AlertaItem, f: Filtro): boolean {
   if (f === 'amarilla') return item.alerta_desarrollo === 'amarilla' || item.alerta_qa === 'amarilla'
   if (f === 'roja') return item.alerta_desarrollo === 'roja' || item.alerta_qa === 'roja'
   return true
+}
+
+function isValidDate(v: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v))
+}
+
+function sortByCompromisoAsc(a: AlertaItem, b: AlertaItem): number {
+  const aDate = a.fecha_comprometida_cliente ?? a.fecha_fin_desarrollo
+  const bDate = b.fecha_comprometida_cliente ?? b.fecha_fin_desarrollo
+  if (!aDate && !bDate) return (a.ticket_key ?? a.summary).localeCompare(b.ticket_key ?? b.summary)
+  if (!aDate) return 1
+  if (!bDate) return -1
+  const dateCompare = aDate.localeCompare(bDate)
+  if (dateCompare !== 0) return dateCompare
+  return (a.ticket_key ?? a.summary).localeCompare(b.ticket_key ?? b.summary)
+}
+
+function AlertDateCell({
+  value,
+  placeholder = 'AAAA-MM-DD',
+  iconClass,
+  focusClass,
+  onSave,
+}: {
+  value: string | null | undefined
+  placeholder?: string
+  iconClass: string
+  focusClass: string
+  onSave: (fecha: string | null) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [localValue, setLocalValue] = useState(value ?? '')
+  const valueRef = useRef(value ?? '')
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    if (savingRef.current) return
+    const v = value ?? ''
+    setLocalValue(v)
+    valueRef.current = v
+  }, [value])
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setLocalValue(e.target.value)
+    valueRef.current = e.target.value
+  }
+
+  async function commit() {
+    const trimmed = valueRef.current.trim()
+    const current = value ?? ''
+    if (trimmed === current) return
+
+    if (trimmed && !isValidDate(trimmed)) {
+      setLocalValue(current)
+      valueRef.current = current
+      return
+    }
+
+    savingRef.current = true
+    setSaving(true)
+    try {
+      await onSave(trimmed || null)
+    } catch {
+      setLocalValue(current)
+      valueRef.current = current
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1 px-1">
+      <CalendarDays size={12} className={clsx('shrink-0', localValue ? iconClass : 'text-corporate-muted')} />
+      <input
+        type="text"
+        value={localValue}
+        placeholder={placeholder}
+        onChange={handleChange}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+        disabled={saving}
+        className={clsx(
+          'w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:bg-white focus:outline-none disabled:opacity-50',
+          focusClass,
+        )}
+      />
+      {saving && <Loader2 size={12} className={clsx('animate-spin shrink-0', iconClass)} />}
+    </div>
+  )
 }
 
 // ── tabla sin asignación ──────────────────────────────────────────────────────
@@ -220,11 +316,44 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
   )
 
   const devItems = items.filter(i => i.alerta_desarrollo != null)
-  const visible  = items.filter(i => matchFiltro(i, filtro))
+  const visible  = items.filter(i => matchFiltro(i, filtro)).sort(sortByCompromisoAsc)
   const equipoAsignado = (item: AlertaItem) =>
     item.equipo ?? (item as AlertaItem & { assigned_team?: string | null }).assigned_team ?? null
   const equipoTrabajo = (item: AlertaItem) =>
     item.equipo_trabajo ?? (item as AlertaItem & { equipo_trabajo?: string | null }).equipo_trabajo ?? null
+
+  async function saveFechaAsignacion(item: AlertaItem, fecha: string | null) {
+    const res = await updateFechaAsignacion(modulo, item.id, fecha)
+    setItems(prev => prev.map(it => it.id === item.id ? {
+      ...it,
+      fecha_asignacion: fecha,
+      fecha_fin_real: res.fecha_finalizacion,
+      fecha_fin_qa: res.fecha_finalizacion,
+      fecha_comprometida_cliente: res.fecha_finalizacion_inicial ?? it.fecha_comprometida_cliente,
+      fecha_fin_desarrollo: res.fecha_finalizacion_inicial ?? it.fecha_fin_desarrollo,
+    } : it))
+    await load()
+  }
+
+  async function saveFechaComprometidaCliente(item: AlertaItem, fecha: string | null) {
+    const res = await updateFechaComprometidaCliente(modulo, item.id, fecha)
+    setItems(prev => prev.map(it => it.id === item.id ? {
+      ...it,
+      fecha_comprometida_cliente: res.fecha_finalizacion_inicial,
+      fecha_fin_desarrollo: res.fecha_finalizacion_inicial,
+    } : it))
+    await load()
+  }
+
+  async function saveFechaFinalizacion(item: AlertaItem, fecha: string | null) {
+    const res = await updateFechaFinalizacion(modulo, item.id, fecha)
+    setItems(prev => prev.map(it => it.id === item.id ? {
+      ...it,
+      fecha_fin_real: res.fecha_finalizacion,
+      fecha_fin_qa: res.fecha_finalizacion,
+    } : it))
+    await load()
+  }
 
   const rowClass = (item: AlertaItem) => {
     const worstDev = item.alerta_desarrollo
@@ -383,16 +512,31 @@ export function AlertasPanel({ modulo, active, piId }: Props) {
                             </span>
                           </td>
                           <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                            {item.fecha_asignacion ?? '—'}
+                            <AlertDateCell
+                              value={item.fecha_asignacion}
+                              iconClass="text-allianz-blue"
+                              focusClass="focus:border-allianz-blue"
+                              onSave={fecha => saveFechaAsignacion(item, fecha)}
+                            />
                           </td>
                           <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap font-medium">
-                            {item.fecha_comprometida_cliente ?? item.fecha_fin_desarrollo ?? '—'}
+                            <AlertDateCell
+                              value={item.fecha_comprometida_cliente ?? item.fecha_fin_desarrollo}
+                              iconClass="text-gray-500"
+                              focusClass="focus:border-gray-400"
+                              onSave={fecha => saveFechaComprometidaCliente(item, fecha)}
+                            />
                           </td>
                           <td className="px-3 py-2 border-r border-corporate-line/30 text-center">
                             <NivelBadge nivel={item.alerta_desarrollo} />
                           </td>
                           <td className="px-3 py-2 border-r border-corporate-line/30 whitespace-nowrap text-corporate-muted">
-                            {item.fecha_fin_real ?? item.fecha_fin_qa ?? '—'}
+                            <AlertDateCell
+                              value={item.fecha_fin_real ?? item.fecha_fin_qa}
+                              iconClass="text-emerald-600"
+                              focusClass="focus:border-emerald-500"
+                              onSave={fecha => saveFechaFinalizacion(item, fecha)}
+                            />
                           </td>
                           <td className={clsx('px-3 py-2 border-r border-corporate-line/30 text-right font-mono text-[11px]', (item.dias_desviacion ?? 0) > 0 ? 'font-semibold text-red-700' : 'text-corporate-muted')}>
                             {item.dias_desviacion != null ? `${item.dias_desviacion}d` : item.dias_para_compromiso != null ? `${item.dias_para_compromiso}d` : '—'}
