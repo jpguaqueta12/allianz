@@ -1,13 +1,15 @@
 export interface AsignacionPersona {
+  backlog_item_id: number | null
+  plan_item_index: number | null
   modulo: 'MEJORA_CONTINUA' | 'FABRICA' | string | null
   ticket_key: string | null
   summary: string | null
-  status: string | null
   perfil: string
   fase: string
   horas: number
   tarea: string | null
   subtarea: string | null
+  plan_status: string | null
   fecha_inicio: string | null
   fecha_fin: string | null
 }

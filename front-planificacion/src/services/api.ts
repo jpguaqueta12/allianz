@@ -527,6 +527,27 @@ export async function deleteBacklogItem(modulo: string, ticketId: number): Promi
   return r.json()
 }
 
+export async function patchPlanificacionItem(
+  modulo: string,
+  ticketId: number,
+  itemIndex: number,
+  changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null },
+): Promise<void> {
+  const body: Record<string, string | null> = {}
+  if ('fecha_inicio' in changes) body.fecha_inicio = changes.fecha_inicio ?? null
+  if ('fecha_fin' in changes) body.fecha_fin = changes.fecha_fin ?? null
+  if ('status' in changes) body.status = changes.status ?? null
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/planificacion/item/${itemIndex}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error guardando cambio' }))
+    throw new Error(err.detail ?? 'Error guardando cambio')
+  }
+}
+
 export async function updatePlanificacion(
   modulo: string,
   ticketId: number,

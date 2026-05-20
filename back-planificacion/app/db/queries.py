@@ -342,25 +342,27 @@ async def _calcular_horas_asignadas_por_persona(
             continue
         data = dict(row)
         ticket_meta = {
+            "backlog_item_id": data.get("id"),
             "modulo": data.get("modulo"),
             "ticket_key": data.get("ticket_key"),
             "summary": data.get("summary"),
-            "status": data.get("status"),
             "fecha_asignacion": data.get("fecha_asignacion"),
             "fecha_finalizacion": data.get("fecha_finalizacion") or data.get("fecha_entrega"),
         }
         items = _planificacion_items_from_extra(row["extra"])
         if items:
-            for item in items:
+            for idx, item in enumerate(items):
                 nombre = item["responsable"]
                 asignadas[nombre] = asignadas.get(nombre, 0) + item["horas"]
                 detalle.setdefault(nombre, []).append({
                     **ticket_meta,
+                    "plan_item_index": idx,
                     "perfil": item["perfil"],
                     "fase": item["fase"],
                     "horas": round(float(item["horas"]), 1),
                     "tarea": item.get("tarea"),
                     "subtarea": item.get("subtarea"),
+                    "plan_status": item.get("status"),
                     "fecha_inicio": item.get("fecha_inicio") or ticket_meta["fecha_asignacion"],
                     "fecha_fin": item.get("fecha_fin") or ticket_meta["fecha_finalizacion"],
                 })
@@ -378,11 +380,13 @@ async def _calcular_horas_asignadas_por_persona(
                 for nombre in responsables:
                     detalle.setdefault(nombre, []).append({
                         **ticket_meta,
+                        "plan_item_index": None,
                         "perfil": perfil,
                         "fase": "desarrollo",
                         "horas": horas_split,
                         "tarea": None,
                         "subtarea": None,
+                        "plan_status": None,
                         "fecha_inicio": ticket_meta["fecha_asignacion"],
                         "fecha_fin": ticket_meta["fecha_finalizacion"],
                     })
@@ -1134,6 +1138,34 @@ def _horas_por_perfil_de_data(data: dict) -> tuple[float, float, float]:
             elif p == "cobol": cobol += h
             elif p in ("calidad", "qa"): qa += h
     return java, cobol, qa
+
+
+async def patch_planificacion_item(
+    pool: Any,
+    modulo: str,
+    ticket_id: int,
+    item_index: int,
+    changes: dict,
+) -> None:
+    """Actualiza un único campo de un plan item sin reescribir toda la planificación."""
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    existing_extra = await pool.fetchval(f"SELECT extra FROM {table} WHERE id = $1", ticket_id)
+    extra_data = _json_load(existing_extra) or {}
+    if not isinstance(extra_data, dict):
+        extra_data = {}
+    items = extra_data.get("planificacion_items") or []
+    if not isinstance(items, list) or item_index < 0 or item_index >= len(items):
+        raise ValueError(f"Plan item index {item_index} fuera de rango (hay {len(items)} items)")
+    allowed = {"fecha_inicio", "fecha_fin", "status"}
+    for key, value in changes.items():
+        if key in allowed:
+            items[item_index][key] = value or None
+    extra_data["planificacion_items"] = items
+    await pool.execute(
+        f"UPDATE {table} SET extra = $1 WHERE id = $2",
+        json.dumps(_json_safe(extra_data), ensure_ascii=False),
+        ticket_id,
+    )
 
 
 async def update_planificacion(pool: Any, modulo: str, ticket_id: int, data: dict) -> None:

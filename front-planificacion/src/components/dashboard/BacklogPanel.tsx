@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo, ResumenProyecto } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, patchPlanificacionItem, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -1045,6 +1045,87 @@ function StatusSelectField({
   )
 }
 
+const PLAN_ROW_STATUS_COLORS: Record<string, string> = {
+  'In Progress': 'text-blue-700 bg-blue-50 border-blue-200',
+  'Done':        'text-green-700 bg-green-50 border-green-200',
+  'Blocked':     'text-red-700 bg-red-50 border-red-200',
+  'Cancelled':   'text-corporate-muted bg-corporate-surface border-corporate-line',
+}
+
+function PlanItemsTable({
+  item,
+  modulo,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  onSaved: (patch: Partial<BacklogItem>) => void
+}) {
+  const [localItems, setLocalItems] = useState(item.planificacion_items ?? [])
+  const [saving, setSaving] = useState<number | null>(null)
+
+  async function handleStatusChange(idx: number, newStatus: string) {
+    setSaving(idx)
+    try {
+      await patchPlanificacionItem(modulo, item.id, idx, { status: newStatus || null })
+      const updated = localItems.map((r, i) => i === idx ? { ...r, status: newStatus || null } : r)
+      setLocalItems(updated)
+      onSaved({ planificacion_items: updated })
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded border border-corporate-line">
+      <div className="border-b border-corporate-line bg-corporate-surface px-3 py-2 text-[11px] font-semibold uppercase text-corporate-muted">
+        Tareas y subtareas
+      </div>
+      <div className="max-h-52 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-corporate-muted">
+            <tr>
+              {['Tarea', 'Subtarea', 'Status', 'Observación', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
+                <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {localItems.map((row, idx) => (
+              <tr key={idx} className="border-t border-corporate-line">
+                <td className="px-2 py-1.5">{row.tarea ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.subtarea ?? '—'}</td>
+                <td className="px-2 py-1.5">
+                  <select
+                    value={row.status ?? ''}
+                    disabled={saving === idx}
+                    onChange={e => handleStatusChange(idx, e.target.value)}
+                    className={clsx(
+                      'rounded border px-1 py-0.5 text-[11px] font-medium',
+                      row.status ? (PLAN_ROW_STATUS_COLORS[row.status] ?? 'text-corporate-muted bg-white border-corporate-line') : 'text-corporate-muted bg-white border-corporate-line',
+                      saving === idx && 'opacity-50',
+                    )}
+                  >
+                    <option value="">—</option>
+                    {PLAN_ROW_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+                <td className="px-2 py-1.5">{row.observacion ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.responsable ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.perfil}</td>
+                <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.fecha_inicio ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.fecha_fin ?? '—'}</td>
+                <td className="px-2 py-1.5">{row.fecha_escalamiento ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function BacklogDetailModal({
   item,
   modulo,
@@ -1102,38 +1183,7 @@ function BacklogDetailModal({
             <DetailField label="Equipo planificado" value={<ResponsablesCell item={item} />} />
           </div>
           {(item.planificacion_items ?? []).length > 0 && (
-            <div className="mt-3 rounded border border-corporate-line">
-              <div className="border-b border-corporate-line bg-corporate-surface px-3 py-2 text-[11px] font-semibold uppercase text-corporate-muted">
-                Tareas y subtareas
-              </div>
-              <div className="max-h-52 overflow-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 text-corporate-muted">
-                    <tr>
-                      {['Tarea', 'Subtarea', 'Status', 'Observación', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
-                        <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {item.planificacion_items!.map((row, idx) => (
-                      <tr key={idx} className="border-t border-corporate-line">
-                        <td className="px-2 py-1.5">{row.tarea ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.subtarea ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.status ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.observacion ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.responsable ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.perfil}</td>
-                        <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.fecha_inicio ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.fecha_fin ?? '—'}</td>
-                        <td className="px-2 py-1.5">{row.fecha_escalamiento ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <PlanItemsTable item={item} modulo={modulo} onSaved={onSaved} />
           )}
         </div>
       </div>

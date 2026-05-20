@@ -14,6 +14,7 @@ from app.models.requests import (
     ChatRequest,
     InitSessionRequest,
     PlanificacionRequest,
+    PlanItemPatchRequest,
     FechaAsignacionRequest,
     FechaComprometidaClienteRequest,
     FechaFinalizacionRequest,
@@ -204,6 +205,20 @@ async def update_planificacion(modulo: str, ticket_id: int, body: PlanificacionR
     import app.db.queries as Q
     pool = get_pool()
     await Q.update_planificacion(pool, modulo.upper(), ticket_id, body.model_dump())
+    return {"ok": True}
+
+
+@router.patch("/backlog/{modulo}/{ticket_id}/planificacion/item/{item_index}")
+async def patch_planificacion_item(modulo: str, ticket_id: int, item_index: int, body: PlanItemPatchRequest):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    pool = get_pool()
+    try:
+        await Q.patch_planificacion_item(
+            pool, modulo.upper(), ticket_id, item_index, body.model_dump(exclude_none=True)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True}
 
 

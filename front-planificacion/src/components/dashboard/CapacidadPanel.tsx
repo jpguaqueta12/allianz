@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { AsignacionPersona, PersonaCapacidad, PeriodoOcupado, PiInfo } from '../../types'
+import { patchPlanificacionItem } from '../../services/api'
 import { DataPanel, KpiCard, StatusBadge } from '../ui/Corporate'
 import {
   createNovedadDisponibilidad,
@@ -646,7 +647,104 @@ function TimelineStrip({
   )
 }
 
-function AsignacionesList({ asignaciones }: { asignaciones: AsignacionPersona[] }) {
+const PLAN_STATUS_OPTIONS = ['In Progress', 'Done', 'Blocked', 'Cancelled']
+const PLAN_STATUS_TONE: Record<string, string> = {
+  'In Progress': 'blue',
+  'Done': 'green',
+  'Blocked': 'red',
+  'Cancelled': 'neutral',
+}
+
+function AsignacionRow({
+  asignacion,
+  onRefresh,
+}: {
+  asignacion: AsignacionPersona
+  onRefresh?: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [localStatus, setLocalStatus] = useState(asignacion.plan_status ?? '')
+  const [localInicio, setLocalInicio] = useState(asignacion.fecha_inicio ?? '')
+  const [localFin, setLocalFin] = useState(asignacion.fecha_fin ?? '')
+
+  const canEdit = asignacion.backlog_item_id != null && asignacion.plan_item_index != null
+
+  async function save(changes: { fecha_inicio?: string | null; fecha_fin?: string | null; status?: string | null }) {
+    if (!canEdit) return
+    setSaving(true)
+    try {
+      await patchPlanificacionItem(
+        asignacion.modulo ?? 'FABRICA',
+        asignacion.backlog_item_id!,
+        asignacion.plan_item_index!,
+        changes,
+      )
+      onRefresh?.()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <tr className={saving ? 'opacity-60' : ''}>
+      <td className="whitespace-nowrap font-mono text-[11px] font-medium text-allianz-blue">{asignacion.ticket_key ?? '—'}</td>
+      <td className="max-w-[220px] truncate text-corporate-ink" title={asignacion.summary ?? ''}>{asignacion.summary ?? '—'}</td>
+      <td><StatusBadge tone={asignacion.modulo === 'FABRICA' ? 'blue' : 'purple'}>{asignacion.modulo === 'MEJORA_CONTINUA' ? 'Mejora' : 'Fábrica'}</StatusBadge></td>
+      <td className="text-corporate-muted">{asignacion.perfil}</td>
+      <td className="text-corporate-muted">{asignacion.fase}</td>
+      <td>
+        {canEdit ? (
+          <input
+            type="date"
+            value={localInicio}
+            disabled={saving}
+            onChange={e => setLocalInicio(e.target.value)}
+            onBlur={() => save({ fecha_inicio: localInicio || null })}
+            className="rounded border border-corporate-line px-1 py-0.5 font-mono text-[11px] disabled:bg-gray-50"
+          />
+        ) : (
+          <span className="font-mono text-[11px]">{formatShortDate(asignacion.fecha_inicio)}</span>
+        )}
+      </td>
+      <td>
+        {canEdit ? (
+          <input
+            type="date"
+            value={localFin}
+            disabled={saving}
+            onChange={e => setLocalFin(e.target.value)}
+            onBlur={() => save({ fecha_fin: localFin || null })}
+            className="rounded border border-corporate-line px-1 py-0.5 font-mono text-[11px] disabled:bg-gray-50"
+          />
+        ) : (
+          <span className="font-mono text-[11px]">{formatShortDate(asignacion.fecha_fin)}</span>
+        )}
+      </td>
+      <td className="text-right font-mono">{formatHours(asignacion.horas)}</td>
+      <td>
+        {canEdit ? (
+          <select
+            value={localStatus}
+            disabled={saving}
+            onChange={e => {
+              const val = e.target.value
+              setLocalStatus(val)
+              save({ status: val || null })
+            }}
+            className="rounded border border-corporate-line bg-white px-1 py-0.5 text-[11px] text-corporate-ink disabled:bg-gray-50"
+          >
+            <option value="">—</option>
+            {PLAN_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        ) : (
+          localStatus ? <StatusBadge tone={PLAN_STATUS_TONE[localStatus] as never}>{localStatus}</StatusBadge> : <span className="text-corporate-muted">—</span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+function AsignacionesList({ asignaciones, onRefresh }: { asignaciones: AsignacionPersona[]; onRefresh?: () => void }) {
   if (!asignaciones.length) {
     return <p className="text-xs text-corporate-muted">Sin asignaciones registradas.</p>
   }
@@ -655,24 +753,14 @@ function AsignacionesList({ asignaciones }: { asignaciones: AsignacionPersona[] 
       <table className="corporate-table">
         <thead>
           <tr>
-            {['KEY', 'Resumen', 'Módulo', 'Perfil', 'Fase', 'Inicio', 'Fin', 'Horas', 'Estado'].map(h => (
+            {['KEY', 'Resumen', 'Módulo', 'Perfil', 'Fase', 'Inicio', 'Fin', 'Horas', 'Status'].map(h => (
               <th key={h}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {asignaciones.map((a, idx) => (
-            <tr key={`${a.ticket_key ?? 'noid'}-${idx}`}>
-              <td className="whitespace-nowrap font-mono text-[11px] font-medium text-allianz-blue">{a.ticket_key ?? '—'}</td>
-              <td className="max-w-[260px] truncate text-corporate-ink" title={a.summary ?? ''}>{a.summary ?? '—'}</td>
-              <td><StatusBadge tone={a.modulo === 'FABRICA' ? 'blue' : 'purple'}>{a.modulo === 'MEJORA_CONTINUA' ? 'Mejora' : 'Fábrica'}</StatusBadge></td>
-              <td className="text-corporate-muted">{a.perfil}</td>
-              <td className="text-corporate-muted">{a.fase}</td>
-              <td className="font-mono">{formatShortDate(a.fecha_inicio)}</td>
-              <td className="font-mono">{formatShortDate(a.fecha_fin)}</td>
-              <td className="text-right font-mono">{formatHours(a.horas)}</td>
-              <td>{a.status ? <StatusBadge tone="neutral">{a.status}</StatusBadge> : '—'}</td>
-            </tr>
+            <AsignacionRow key={`${a.backlog_item_id ?? 'noid'}-${a.plan_item_index ?? idx}`} asignacion={a} onRefresh={onRefresh} />
           ))}
         </tbody>
       </table>
@@ -684,10 +772,12 @@ function PersonaDetalleRow({
   persona,
   pi,
   colSpan,
+  onRefresh,
 }: {
   persona: PersonaCapacidad
   pi?: PiInfo | null
   colSpan: number
+  onRefresh?: () => void
 }) {
   const asignaciones = persona.asignaciones ?? []
   const periodos = persona.periodos_ocupados ?? []
@@ -718,7 +808,7 @@ function PersonaDetalleRow({
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-corporate-muted">
               KEYs asignados ({asignaciones.length})
             </p>
-            <AsignacionesList asignaciones={asignaciones} />
+            <AsignacionesList asignaciones={asignaciones} onRefresh={onRefresh} />
           </div>
         </div>
       </td>
@@ -853,7 +943,7 @@ function CapacityTable({
               ]
               if (isExpanded) {
                 rowEls.push(
-                  <PersonaDetalleRow key={`${p.id}-detalle`} persona={p} pi={pi} colSpan={totalCols} />,
+                  <PersonaDetalleRow key={`${p.id}-detalle`} persona={p} pi={pi} colSpan={totalCols} onRefresh={onRefresh} />,
                 )
               }
               return rowEls

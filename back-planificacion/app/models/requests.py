@@ -158,3 +158,9 @@ class PlanificacionRequest(BaseModel):
     horas_af_parametria: Optional[float] = None
     horas_af_qa:         Optional[float] = None
     planificacion_items: Optional[list[PlanificacionItemRequest]] = None
+
+
+class PlanItemPatchRequest(BaseModel):
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    status: Optional[str] = None
