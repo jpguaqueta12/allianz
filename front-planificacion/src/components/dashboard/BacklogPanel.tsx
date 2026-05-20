@@ -132,29 +132,30 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
   const today = new Date().toISOString().split('T')[0]
 
   const HEADERS = [
-    'Key', 'Summary', 'Tipo', 'Status', 'Proyecto', 'Equipo asignado',
-    'Assignee', 'Reporter', 'Epic Link', 'Prioridad', 'Story Points',
-    'Sprint', 'Labels', 'Components', 'Fix Version', 'Release Notes',
-    'Resolución', 'Created', 'Updated',
-    // planificación
-    'F. Asignación', 'Fecha comprometida a cliente', 'F. Fin Real', 'F. Entrega',
-    'ETC (días / horas)', 'PRN',
-    // escalados
-    'Escalados (hist.)',
-    // responsables
-    'Resp. Java', 'Resp. Cobol', 'Resp. Gestión', 'Resp. Parametría', 'Resp. QA',
-    // horas por fase/perfil
-    'H. Análisis Java', 'H. Desarrollo Java', 'H. Pruebas Java', 'H. AF Java',
-    'H. Análisis Cobol', 'H. Desarrollo Cobol', 'H. Pruebas Cobol', 'H. AF Cobol',
-    'H. Análisis Dialogue', 'H. Desarrollo Dialogue', 'H. Pruebas Dialogue', 'H. AF Dialogue',
-    'H. Análisis Parametría', 'H. Desarrollo Parametría', 'H. Pruebas Parametría', 'H. AF Parametría',
-    'H. Análisis QA', 'H. AF QA',
-    'Total Horas',
-    // planificación items detalle
-    'Planificación Items',
+    'Key',
+    'Tarea',
+    'Subtarea',
+    'Status tarea',
+    'Observación tarea',
+    'Responsable tarea',
+    'Perfil',
+    'Horas tarea',
+    'Inicio tarea',
+    'Fin tarea',
+    'Esc. tarea',
+    'F. Asignación',
+    'Fecha comprometida a cliente',
+    'F. Fin Real',
+    'PRN',
+    'Escalados',
+    'ETC',
+    'Summary',
+    'Equipo',
+    'Total h.',
+    'Proyecto',
   ]
 
-  const rows = items.map(item => {
+  const rows = items.flatMap(item => {
     const fechaFinInicial = item.fecha_finalizacion_inicial ?? ''
     const fechaFin = item.fecha_finalizacion ?? ''
     const etc = calcularEtc(item, piActivo)
@@ -166,103 +167,67 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
         : []
     ).map(e => `${e.fecha_escalado}→${e.fecha_reinicio ?? 'abierto'}`).join(' | ')
 
-    const planItems = (item.planificacion_items ?? [])
-      .map(p => {
-        const tarea = [p.tarea, p.subtarea].filter(Boolean).join(' / ') || 'Sin tarea'
-        const fechas = [p.fecha_inicio, p.fecha_fin].filter(Boolean).join('→')
-        return `${tarea}: ${p.responsable ?? '—'} [${p.perfil}] ${p.horas ?? 0}h${p.status ? ` ${p.status}` : ''}${p.observacion ? ` obs. ${p.observacion}` : ''}${fechas ? ` (${fechas})` : ''}${p.fecha_escalamiento ? ` esc. ${p.fecha_escalamiento}` : ''}`
-      })
-      .join(' | ')
+    const planRows: Array<PlanificacionItem | null> =
+      item.planificacion_items?.length ? item.planificacion_items : [null]
 
-    return [
+    return planRows.map(planItem => [
       item.ticket_key ?? '',
-      item.summary,
-      item.issue_type ?? '',
-      item.status ?? '',
-      item.project ?? '',
-      item.assigned_team ?? '',
-      item.assignee ?? '',
-      item.reporter ?? '',
-      item.epic_link ?? '',
-      item.priority ?? '',
-      item.story_points ?? '',
-      item.sprint ?? '',
-      item.labels ?? '',
-      item.components ?? '',
-      item.fix_version ?? '',
-      item.include_release_notes ?? '',
-      item.resolution ?? '',
-      item.created ?? '',
-      item.updated ?? '',
-      // planificación
+      planItem?.tarea ?? '',
+      planItem?.subtarea ?? '',
+      planItem?.status ?? '',
+      planItem?.observacion ?? '',
+      planItem?.responsable ?? '',
+      planItem?.perfil ?? '',
+      planItem?.horas ?? '',
+      planItem?.fecha_inicio ?? '',
+      planItem?.fecha_fin ?? '',
+      planItem?.fecha_escalamiento ?? '',
       item.fecha_asignacion ?? '',
       fechaFinInicial,
       fechaFin,
-      item.fecha_entrega ?? '',
-      formatEtc(etc, piActivo),
       prn,
-      // escalados
       escaladosHist,
-      // responsables
-      item.responsable_java ?? '',
-      item.responsable_cobol ?? '',
-      item.responsable_dialogue ?? '',
-      item.responsable_parametria ?? '',
-      item.responsable_qa ?? '',
-      // horas java
-      item.horas_analisis_java ?? '',
-      item.horas_desarrollo_java ?? '',
-      item.horas_pruebas_java ?? '',
-      item.horas_af_java ?? '',
-      // horas cobol
-      item.horas_analisis_cobol ?? '',
-      item.horas_desarrollo_cobol ?? '',
-      item.horas_pruebas_cobol ?? '',
-      item.horas_af_cobol ?? '',
-      // horas dialogue
-      item.horas_analisis_dialogue ?? '',
-      item.horas_desarrollo_dialogue ?? '',
-      item.horas_pruebas_dialogue ?? '',
-      item.horas_af_dialogue ?? '',
-      // horas parametría
-      item.horas_analisis_parametria ?? '',
-      item.horas_desarrollo_parametria ?? '',
-      item.horas_pruebas_parametria ?? '',
-      item.horas_af_parametria ?? '',
-      // horas qa
-      item.horas_analisis_qa ?? '',
-      item.horas_af_qa ?? '',
+      formatEtc(etc, piActivo),
+      item.summary,
+      item.assigned_team ?? '',
       item.total_horas ?? '',
-      planItems,
-    ]
+      item.project ?? '',
+    ])
   })
 
   const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows])
 
   // Column widths (approximate chars)
   ws['!cols'] = [
-    { wch: 16 }, { wch: 50 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 22 },
-    { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 12 }, { wch: 10 },
-    { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 14 }, { wch: 14 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-    { wch: 20 }, { wch: 28 },
-    { wch: 40 },
-    { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
-    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
-    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
-    { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 },
+    { wch: 16 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 16 },
+    { wch: 34 },
+    { wch: 24 },
     { wch: 12 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 28 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 40 },
+    { wch: 20 },
     { wch: 60 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 18 },
   ]
 
   // Freeze header row
   ws['!freeze'] = { xSplit: 0, ySplit: 1 }
+  if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] }
 
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Backlog')
+  XLSX.utils.book_append_sheet(wb, ws, 'Plan')
   XLSX.writeFile(wb, `backlog-${modulo.toLowerCase()}-${today}.xlsx`)
 }
 
