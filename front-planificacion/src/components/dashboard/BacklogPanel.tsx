@@ -130,9 +130,17 @@ function calcularPrn(item: BacklogItem, piActivo?: PiInfo | null): string {
 
 function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | null) {
   const today = new Date().toISOString().split('T')[0]
+  const titulo = `Plan de trabajo ${modulo}`
+  const piNombre = piActivo?.nombre ?? 'PI no seleccionado'
 
   const HEADERS = [
     'Key',
+    'Proyecto',
+    'Summary',
+    'Equipo',
+    'Total h.',
+    'Estado planificación',
+    '#',
     'Tarea',
     'Subtarea',
     'Status tarea',
@@ -147,13 +155,27 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     'Fecha comprometida a cliente',
     'F. Fin Real',
     'PRN',
-    'Escalados',
     'ETC',
-    'Summary',
-    'Equipo',
-    'Total h.',
-    'Proyecto',
+    'Escalados',
   ]
+
+  const ticketsConSubtareas = items.filter(item => (item.planificacion_items ?? []).length > 0).length
+  const totalSubtareas = items.reduce((sum, item) => sum + (item.planificacion_items?.length ?? 0), 0)
+  const totalHoras = items.reduce((sum, item) => sum + (item.total_horas ?? 0), 0)
+  const prnSiguientePi = items.filter(item => calcularPrn(item, piActivo) === 'Debe pasar al siguiente PI').length
+  const escaladosAbiertos = items.filter(item =>
+    ((item.escalados ?? []).length > 0 ? item.escalados : item.fecha_escalado
+      ? [{ fecha_escalado: item.fecha_escalado, fecha_reinicio: item.fecha_reinicio }]
+      : []
+    ).some(e => e.fecha_escalado && !e.fecha_reinicio),
+  ).length
+  const horasPorPerfil = items.reduce<Record<string, number>>((acc, item) => {
+    const planItems = item.planificacion_items ?? []
+    planItems.forEach(row => {
+      acc[row.perfil] = (acc[row.perfil] ?? 0) + (row.horas ?? 0)
+    })
+    return acc
+  }, { java: 0, cobol: 0, gestion: 0, calidad: 0 })
 
   const rows = items.flatMap(item => {
     const fechaFinInicial = item.fecha_finalizacion_inicial ?? ''
@@ -170,8 +192,14 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     const planRows: Array<PlanificacionItem | null> =
       item.planificacion_items?.length ? item.planificacion_items : [null]
 
-    return planRows.map(planItem => [
+    return planRows.map((planItem, idx) => [
       item.ticket_key ?? '',
+      item.project ?? '',
+      item.summary,
+      item.assigned_team ?? '',
+      item.total_horas ?? '',
+      planItem ? 'Planificado' : 'Sin subtareas',
+      planItem ? idx + 1 : '',
       planItem?.tarea ?? '',
       planItem?.subtarea ?? '',
       planItem?.status ?? '',
@@ -186,21 +214,31 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
       fechaFinInicial,
       fechaFin,
       prn,
-      escaladosHist,
       formatEtc(etc, piActivo),
-      item.summary,
-      item.assigned_team ?? '',
-      item.total_horas ?? '',
-      item.project ?? '',
+      escaladosHist,
     ])
   })
 
-  const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows])
+  const detailRows = [
+    [titulo],
+    ['PI', piNombre, 'Estado PI', piActivo?.estado ?? '', 'Generado', today],
+    ['Tickets exportados', items.length, 'Tickets con subtareas', ticketsConSubtareas, 'Subtareas', totalSubtareas, 'Horas planificadas', totalHoras],
+    [],
+    ['Identificación del ticket', '', '', '', '', '', 'Detalle de subtareas', '', '', '', '', '', '', '', '', '', '', 'Control del plan'],
+    HEADERS,
+    ...rows,
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(detailRows)
 
   // Column widths (approximate chars)
   ws['!cols'] = [
     { wch: 16 },
+    { wch: 18 },
+    { wch: 60 },
+    { wch: 28 },
+    { wch: 12 },
     { wch: 20 },
+    { wch: 8 },
     { wch: 20 },
     { wch: 16 },
     { wch: 34 },
@@ -210,24 +248,64 @@ function exportExcel(items: BacklogItem[], modulo: string, piActivo?: PiInfo | n
     { wch: 14 },
     { wch: 14 },
     { wch: 14 },
-    { wch: 14 },
     { wch: 28 },
     { wch: 14 },
     { wch: 12 },
-    { wch: 40 },
     { wch: 20 },
-    { wch: 60 },
-    { wch: 28 },
-    { wch: 12 },
-    { wch: 18 },
+    { wch: 40 },
+  ]
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: HEADERS.length - 1 } },
+    { s: { r: 4, c: 0 }, e: { r: 4, c: 5 } },
+    { s: { r: 4, c: 6 }, e: { r: 4, c: 16 } },
+    { s: { r: 4, c: 17 }, e: { r: 4, c: HEADERS.length - 1 } },
   ]
 
-  // Freeze header row
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 }
-  if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] }
+  // Freeze title + metadata + headers.
+  ws['!freeze'] = { xSplit: 0, ySplit: 6 }
+  if (rows.length) {
+    ws['!autofilter'] = {
+      ref: XLSX.utils.encode_range({
+        s: { r: 5, c: 0 },
+        e: { r: detailRows.length - 1, c: HEADERS.length - 1 },
+      }),
+    }
+  }
+
+  const resumenRows = [
+    [titulo],
+    ['PI', piNombre],
+    ['Módulo', modulo],
+    ['Generado', today],
+    [],
+    ['Indicador', 'Valor'],
+    ['Tickets exportados', items.length],
+    ['Tickets con subtareas', ticketsConSubtareas],
+    ['Tickets sin subtareas', items.length - ticketsConSubtareas],
+    ['Subtareas exportadas', totalSubtareas],
+    ['Horas planificadas', totalHoras],
+    ['PRN siguiente PI', prnSiguientePi],
+    ['Escalados abiertos', escaladosAbiertos],
+    [],
+    ['Distribución por perfil', 'Horas'],
+    ['Java', horasPorPerfil.java],
+    ['Cobol', horasPorPerfil.cobol],
+    ['Gestión', horasPorPerfil.gestion],
+    ['Calidad', horasPorPerfil.calidad],
+  ]
+  const resumenWs = XLSX.utils.aoa_to_sheet(resumenRows)
+  resumenWs['!cols'] = [{ wch: 28 }, { wch: 24 }]
+  resumenWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }]
 
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Plan')
+  wb.Props = {
+    Title: titulo,
+    Subject: `Exportación del plan ${modulo}`,
+    Author: 'Planificador Allianz',
+    CreatedDate: new Date(),
+  }
+  XLSX.utils.book_append_sheet(wb, resumenWs, 'Resumen')
+  XLSX.utils.book_append_sheet(wb, ws, 'Plan Detallado')
   XLSX.writeFile(wb, `backlog-${modulo.toLowerCase()}-${today}.xlsx`)
 }
 
