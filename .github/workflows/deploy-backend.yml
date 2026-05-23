@@ -45,12 +45,18 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Configure registry credentials on Container App
+        run: |
+          az containerapp registry set \
+            --name ${{ env.CONTAINER_APP }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --server ghcr.io \
+            --username ${{ github.actor }} \
+            --password ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy to Azure Container Apps
         run: |
           az containerapp update \
             --name ${{ env.CONTAINER_APP }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --registry-server ghcr.io \
-            --registry-username ${{ github.actor }} \
-            --registry-password ${{ secrets.GITHUB_TOKEN }}
+            --image ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
