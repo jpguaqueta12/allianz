@@ -50,4 +50,7 @@ jobs:
           az containerapp update \
             --name ${{ env.CONTAINER_APP }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            --image ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --registry-server ghcr.io \
+            --registry-username ${{ github.actor }} \
+            --registry-password ${{ secrets.GITHUB_TOKEN }}
