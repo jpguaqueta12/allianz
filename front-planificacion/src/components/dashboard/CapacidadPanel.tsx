@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
   UserPlus, Trash2, Check, X, AlertTriangle, RefreshCw, Search,
-  Users, Clock3, Activity, Layers, ListFilter, ChevronDown, ChevronRight,
+  Layers, ListFilter, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { AsignacionPersona, PersonaCapacidad, PeriodoOcupado, PiInfo } from '../../types'
 import { patchPlanificacionItem } from '../../services/api'
-import { DataPanel, KpiCard, StatusBadge } from '../ui/Corporate'
+import { DataPanel, StatusBadge } from '../ui/Corporate'
 import {
   createNovedadDisponibilidad,
   crearPersonaEnCapacidad,
@@ -74,29 +74,10 @@ interface Props {
   pi?: PiInfo | null
 }
 
-const estadoColor: Record<string, string> = {
-  'DISPONIBLE':    'green',
-  'OCUPADO':       'amber',
-  'SOBRECARGADO':  'red',
-  'LIDER TECNICO': 'purple',
-  'SIN CAPACIDAD': 'neutral',
-}
-
 type VistaCapacidad = 'riesgo' | 'tecnologia'
 type TecnologiaCapacidad = 'JAVA' | 'COBOL' | 'CALIDAD' | 'GESTION' | 'QA'
-type FiltroCapacidad = 'TODOS' | 'SOBRECARGADO' | 'DISPONIBLE' | 'OCUPADO' | 'SIN_CAPACIDAD' | TecnologiaCapacidad
-
-const FILTERS: { id: FiltroCapacidad; label: string }[] = [
-  { id: 'TODOS', label: 'Todos' },
-  { id: 'SOBRECARGADO', label: 'Sobrecargados' },
-  { id: 'DISPONIBLE', label: 'Disponibles' },
-  { id: 'OCUPADO', label: 'Ocupados' },
-  { id: 'SIN_CAPACIDAD', label: 'Sin capacidad' },
-  { id: 'JAVA', label: 'JAVA' },
-  { id: 'COBOL', label: 'COBOL' },
-  { id: 'CALIDAD', label: 'Calidad' },
-  { id: 'GESTION', label: 'Gestión' },
-]
+type FiltroTecnologia = 'TODAS' | 'JAVA' | 'COBOL' | 'CALIDAD' | 'GESTION'
+type FiltroEstado = 'TODOS' | 'DISPONIBLE' | 'OCUPADO'
 
 function tecnologiaLabel(tecnologia: string) {
   if (tecnologia === 'CALIDAD' || tecnologia === 'QA') return 'Calidad'
@@ -316,32 +297,56 @@ function NovedadesPanel({
   if (!piId) return null
 
   return (
-    <DataPanel title="Novedades de disponibilidad" description="Ausencias y eventos que descuentan capacidad automáticamente">
-      <div className="space-y-3">
-        <div className="grid gap-2 md:grid-cols-[1.4fr_120px_130px_130px_100px_1fr_auto]">
-          <select
-            value={personaId}
-            onChange={e => setPersonaId(e.target.value ? Number(e.target.value) : '')}
-            className="rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink"
-          >
-            <option value="">Persona</option>
-            {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
-          <select value={tipo} onChange={e => setTipo(e.target.value)} className="rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink">
-            <option value="VACACIONES">Vacaciones</option>
-            <option value="INCAPACIDAD">Incapacidad</option>
-            <option value="PERMISO">Permiso</option>
-            <option value="CALAMIDAD">Calamidad</option>
-            <option value="LICENCIA">Licencia</option>
-          </select>
-          <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className="rounded border border-corporate-line px-2 py-1.5 text-xs" />
-          <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)} className="rounded border border-corporate-line px-2 py-1.5 text-xs" />
-          <input type="number" min="0" step="0.5" placeholder="h/día" value={horasPorDia} onChange={e => setHorasPorDia(e.target.value)} className="rounded border border-corporate-line px-2 py-1.5 text-xs" />
-          <input type="text" placeholder="Descripción" value={descripcion} onChange={e => setDescripcion(e.target.value)} className="rounded border border-corporate-line px-2 py-1.5 text-xs" />
-          <button onClick={add} disabled={saving} className="inline-flex items-center justify-center gap-1 rounded-md bg-allianz-blue px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40">
-            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-            Agregar
-          </button>
+    <DataPanel
+      title="Novedades de disponibilidad"
+      description="Ausencias y eventos que descuentan capacidad automáticamente"
+      className="overflow-hidden"
+    >
+      <div className="space-y-4 p-4">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-12">
+          <label className="min-w-0 space-y-1 xl:col-span-3">
+            <span className="text-[11px] font-medium text-corporate-muted">Persona</span>
+            <select
+              value={personaId}
+              onChange={e => setPersonaId(e.target.value ? Number(e.target.value) : '')}
+              className="w-full min-w-0 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink"
+            >
+              <option value="">Seleccionar persona</option>
+              {personas.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </label>
+          <label className="min-w-0 space-y-1 xl:col-span-2">
+            <span className="text-[11px] font-medium text-corporate-muted">Tipo</span>
+            <select value={tipo} onChange={e => setTipo(e.target.value)} className="w-full min-w-0 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink">
+              <option value="VACACIONES">Vacaciones</option>
+              <option value="INCAPACIDAD">Incapacidad</option>
+              <option value="PERMISO">Permiso</option>
+              <option value="CALAMIDAD">Calamidad</option>
+              <option value="LICENCIA">Licencia</option>
+            </select>
+          </label>
+          <label className="min-w-0 space-y-1 xl:col-span-2">
+            <span className="text-[11px] font-medium text-corporate-muted">Inicio</span>
+            <input type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} className="w-full min-w-0 rounded border border-corporate-line px-2 py-1.5 text-xs" />
+          </label>
+          <label className="min-w-0 space-y-1 xl:col-span-2">
+            <span className="text-[11px] font-medium text-corporate-muted">Fin</span>
+            <input type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)} className="w-full min-w-0 rounded border border-corporate-line px-2 py-1.5 text-xs" />
+          </label>
+          <label className="min-w-0 space-y-1 xl:col-span-1">
+            <span className="text-[11px] font-medium text-corporate-muted">Horas/día</span>
+            <input type="number" min="0" step="0.5" placeholder="8" value={horasPorDia} onChange={e => setHorasPorDia(e.target.value)} className="w-full min-w-0 rounded border border-corporate-line px-2 py-1.5 text-xs" />
+          </label>
+          <label className="min-w-0 space-y-1 md:col-span-2 xl:col-span-2">
+            <span className="text-[11px] font-medium text-corporate-muted">Descripción</span>
+            <input type="text" placeholder="Opcional" value={descripcion} onChange={e => setDescripcion(e.target.value)} className="w-full min-w-0 rounded border border-corporate-line px-2 py-1.5 text-xs" />
+          </label>
+          <div className="flex items-end md:col-span-2 xl:col-span-12 xl:justify-end">
+            <button onClick={add} disabled={saving} className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-allianz-blue px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 sm:w-auto">
+              {saving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+              Agregar
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-xs text-red-600">{error}</p>}
@@ -363,7 +368,7 @@ function NovedadesPanel({
                     <td className="font-mono">{row.fecha_inicio}</td>
                     <td className="font-mono">{row.fecha_fin}</td>
                     <td className="text-right font-mono">{formatHours(row.horas_por_dia)}</td>
-                    <td>{row.descripcion ?? '—'}</td>
+                    <td className="max-w-[260px] truncate" title={row.descripcion ?? ''}>{row.descripcion ?? '—'}</td>
                     <td>
                       <button onClick={() => remove(row.id)} className="rounded p-1 text-red-500 hover:bg-red-50" title="Eliminar novedad">
                         <Trash2 size={13} />
@@ -379,75 +384,6 @@ function NovedadesPanel({
         )}
       </div>
     </DataPanel>
-  )
-}
-
-function FilterButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        'rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
-        active
-          ? 'border-allianz-blue bg-blue-50 text-allianz-blue'
-          : 'border-corporate-line bg-white text-corporate-muted hover:text-corporate-ink',
-      )}
-    >
-      {label}
-    </button>
-  )
-}
-
-function CapacitySummary({
-  personas,
-}: {
-  personas: PersonaCapacidad[]
-}) {
-  const consumoTotal = personas.reduce((sum, p) => sum + (p.consumo_total ?? p.carga_estimada ?? 0), 0)
-  const novedadesTotal = personas.reduce((sum, p) => sum + (p.novedades_horas ?? 0), 0)
-  const sobrecargados = personas.filter(p => p.estado === 'SOBRECARGADO')
-  const exceso = sobrecargados.reduce((sum, p) => sum + Math.max(0, -(p.horas_disponibles ?? 0)), 0)
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard
-        label="Personas"
-        value={personas.length}
-        icon={Users}
-        tone="blue"
-        detail={`${sobrecargados.length} sobrecargados`}
-      />
-      <KpiCard
-        label="Horas asignadas"
-        value={`${Math.round(consumoTotal)}h`}
-        icon={Clock3}
-        tone={sobrecargados.length > 0 ? 'red' : 'green'}
-        detail={`${personas.filter(p => p.carga_estimada > 0).length} con asignaciones`}
-      />
-      <KpiCard
-        label="Novedades"
-        value={`${Math.round(novedadesTotal)}h`}
-        icon={AlertTriangle}
-        tone={novedadesTotal > 0 ? 'amber' : 'neutral'}
-        detail="ausencias registradas"
-      />
-      <KpiCard
-        label="Sobrecargados"
-        value={sobrecargados.length}
-        icon={Activity}
-        tone={sobrecargados.length > 0 ? 'red' : 'green'}
-        detail={sobrecargados.length > 0 ? `${Math.round(exceso)}h de exceso` : 'Sin exceso'}
-      />
-    </div>
   )
 }
 
@@ -727,7 +663,7 @@ function CapacityTable({
         <table className="corporate-table">
           <thead>
             <tr>
-              {['', 'Nombre', 'Tecnología', 'Horas asignadas', 'Estado', ...(hasActions ? [''] : [])].map((h, i) => (
+              {['', 'Nombre', 'Tecnología', 'Horas asignadas', 'Disponibilidad', ...(hasActions ? [''] : [])].map((h, i) => (
                 <th key={i}>{h}</th>
               ))}
             </tr>
@@ -784,8 +720,13 @@ function CapacityTable({
                   <td className="text-right">
                     <span className="font-mono font-semibold text-corporate-ink">{formatHours(p.consumo_total ?? p.carga_estimada)}</span>
                   </td>
-                  <td>
-                    <StatusBadge tone={estadoColor[p.estado] as never}>{p.estado}</StatusBadge>
+                  <td className={clsx(
+                    'text-right font-mono font-medium',
+                    (p.horas_disponibles ?? 0) < 0 ? 'text-red-700' :
+                    (p.horas_disponibles ?? 0) === 0 ? 'text-corporate-muted' :
+                    'text-green-700',
+                  )}>
+                    {formatHours(p.horas_disponibles)}
                   </td>
                   {piId && onRefresh && (
                     <td>
@@ -821,18 +762,18 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [vista, setVista] = useState<VistaCapacidad>('riesgo')
-  const [filtro, setFiltro] = useState<FiltroCapacidad>('TODOS')
+  const [tecnologiaFiltro, setTecnologiaFiltro] = useState<FiltroTecnologia>('TODAS')
+  const [estadoFiltro, setEstadoFiltro] = useState<FiltroEstado>('TODOS')
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const toggleExpand = (personaId: number) =>
     setExpandedId(prev => (prev === personaId ? null : personaId))
 
   const filtered = sortByRisk(personas).filter(p => {
-    if (filtro === 'CALIDAD' && p.tecnologia !== 'CALIDAD' && p.tecnologia !== 'QA') return false
-    if (filtro === 'GESTION' && p.tecnologia !== 'GESTION') return false
-    if ((filtro === 'JAVA' || filtro === 'COBOL' || filtro === 'QA') && p.tecnologia !== filtro) return false
-    if (filtro === 'SIN_CAPACIDAD' && p.estado !== 'SIN CAPACIDAD') return false
-    if (filtro !== 'TODOS' && filtro !== 'JAVA' && filtro !== 'COBOL' && filtro !== 'QA' && filtro !== 'CALIDAD' && filtro !== 'GESTION' && filtro !== 'SIN_CAPACIDAD' && p.estado !== filtro) return false
+    if (tecnologiaFiltro === 'CALIDAD' && p.tecnologia !== 'CALIDAD' && p.tecnologia !== 'QA') return false
+    if (tecnologiaFiltro === 'GESTION' && p.tecnologia !== 'GESTION') return false
+    if ((tecnologiaFiltro === 'JAVA' || tecnologiaFiltro === 'COBOL') && p.tecnologia !== tecnologiaFiltro) return false
+    if (estadoFiltro !== 'TODOS' && p.estado !== estadoFiltro) return false
     const q = search.trim().toLowerCase()
     if (!q) return true
     return `${p.nombre} ${p.tecnologia} ${p.estado}`.toLowerCase().includes(q)
@@ -841,6 +782,10 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
   const java  = filtered.filter(p => p.tecnologia === 'JAVA')
   const calidad = filtered.filter(p => p.tecnologia === 'CALIDAD' || p.tecnologia === 'QA')
   const gestion = filtered.filter(p => p.tecnologia === 'GESTION')
+  const totalCapacidad = personas.reduce((sum, p) => sum + (p.capacidad ?? 0), 0)
+  const totalAsignado = personas.reduce((sum, p) => sum + (p.consumo_total ?? p.carga_estimada ?? 0), 0)
+  const totalNovedades = personas.reduce((sum, p) => sum + (p.novedades_horas ?? 0), 0)
+  const personasConAsignacion = personas.filter(p => (p.consumo_total ?? p.carga_estimada ?? 0) > 0).length
 
   async function handleConfirmRemove() {
     if (!confirm || !piId || !onRefresh) return
@@ -920,23 +865,69 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
         )
       )}
 
-      <CapacitySummary personas={personas} />
+      <div className="grid gap-x-8 gap-y-3 border-y border-corporate-line bg-white px-4 py-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <p className="font-medium uppercase text-corporate-muted">Personas</p>
+          <p className="mt-1 text-sm font-semibold text-corporate-ink">{personas.length}</p>
+        </div>
+        <div>
+          <p className="font-medium uppercase text-corporate-muted">Capacidad PI</p>
+          <p className="mt-1 text-sm font-semibold text-corporate-ink">{formatHours(totalCapacidad)}</p>
+        </div>
+        <div>
+          <p className="font-medium uppercase text-corporate-muted">Horas asignadas</p>
+          <p className="mt-1 text-sm font-semibold text-corporate-ink">{formatHours(totalAsignado)} · {personasConAsignacion} con asignación</p>
+        </div>
+        <div>
+          <p className="font-medium uppercase text-corporate-muted">Novedades</p>
+          <p className="mt-1 text-sm font-semibold text-corporate-ink">{formatHours(totalNovedades)}</p>
+        </div>
+      </div>
 
       <NovedadesPanel piId={piId} personas={personas} onRefresh={onRefresh} />
 
       <DataPanel>
-        <div className="space-y-3 p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-corporate-line bg-white px-2 py-1.5">
-              <Search size={14} className="shrink-0 text-corporate-muted" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por nombre, tecnología o estado"
-                className="min-w-0 flex-1 bg-transparent text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none"
-              />
-            </div>
+        <div className="space-y-3 p-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_180px_160px_auto] xl:items-end">
+            <label className="min-w-0 space-y-1">
+              <span className="text-[11px] font-medium text-corporate-muted">Buscar</span>
+              <div className="flex min-w-0 items-center gap-2 rounded-md border border-corporate-line bg-white px-2 py-1.5">
+                <Search size={14} className="shrink-0 text-corporate-muted" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Nombre, tecnología o estado"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none"
+                />
+              </div>
+            </label>
+            <label className="min-w-0 space-y-1">
+              <span className="text-[11px] font-medium text-corporate-muted">Tecnología</span>
+              <select
+                value={tecnologiaFiltro}
+                onChange={e => setTecnologiaFiltro(e.target.value as FiltroTecnologia)}
+                className="w-full rounded-md border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink"
+              >
+                <option value="TODAS">Todas</option>
+                <option value="JAVA">JAVA</option>
+                <option value="COBOL">COBOL</option>
+                <option value="CALIDAD">Calidad</option>
+                <option value="GESTION">Gestión</option>
+              </select>
+            </label>
+            <label className="min-w-0 space-y-1">
+              <span className="text-[11px] font-medium text-corporate-muted">Estado</span>
+              <select
+                value={estadoFiltro}
+                onChange={e => setEstadoFiltro(e.target.value as FiltroEstado)}
+                className="w-full rounded-md border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink"
+              >
+                <option value="TODOS">Todos</option>
+                <option value="DISPONIBLE">Disponible</option>
+                <option value="OCUPADO">Ocupado</option>
+              </select>
+            </label>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -948,7 +939,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
                     : 'border-corporate-line bg-white text-corporate-muted hover:text-corporate-ink',
                 )}
               >
-                <ListFilter size={13} /> Riesgo
+                <ListFilter size={13} /> Lista
               </button>
               <button
                 type="button"
@@ -964,26 +955,16 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map(item => (
-              <FilterButton
-                key={item.id}
-                active={filtro === item.id}
-                label={item.label}
-                onClick={() => setFiltro(item.id)}
-              />
-            ))}
-          </div>
           <p className="text-xs text-corporate-muted">
-            {filtered.length}/{personas.length} personas · ordenado por estado, disponibilidad y ocupación.
+            {filtered.length}/{personas.length} personas · ordenado por disponibilidad, ocupación y estado.
           </p>
         </div>
       </DataPanel>
 
       {vista === 'riesgo' ? (
         <CapacityTable
-          title="Capacidad por riesgo"
-          description={`${filtered.length} persona${filtered.length !== 1 ? 's' : ''} priorizadas por sobrecarga y disponibilidad`}
+          title="Capacidad del equipo"
+          description={`${filtered.length} persona${filtered.length !== 1 ? 's' : ''} en la vista actual`}
           rows={filtered}
           piId={piId}
           onRefresh={onRefresh}
