@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo, ResumenProyecto } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, patchPlanificacionItem, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, patchPlanificacionItem, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject, updateEstadoCritico,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -2037,6 +2037,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [statusFilter, setStatusFilter] = useState('')
   const [fechaComprometidaDesde, setFechaComprometidaDesde] = useState('')
   const [fechaComprometidaHasta, setFechaComprometidaHasta] = useState('')
+  const [criticoFilter, setCriticoFilter] = useState<'all' | 'critico' | 'normal'>('all')
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
   const [creating, setCreating] = useState(false)
@@ -2097,6 +2098,16 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
     }
   }
 
+  async function handleToggleCritico(item: BacklogItem) {
+    const next = !item.estado_critico
+    setItems(prev => prev.map(it => it.id === item.id ? { ...it, estado_critico: next } : it))
+    try {
+      await updateEstadoCritico(modulo, item.id, next)
+    } catch {
+      setItems(prev => prev.map(it => it.id === item.id ? { ...it, estado_critico: !next } : it))
+    }
+  }
+
   const personaOptions = Array.from(new Set(
     items.flatMap(item => responsablesByPerfil(item).flatMap(({ responsables }) => responsables)),
   )).sort((a, b) => a.localeCompare(b))
@@ -2109,6 +2120,8 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
     if (statusFilter && (item.status ?? '') !== statusFilter) return false
     if (fechaComprometidaDesde && (item.fecha_finalizacion_inicial ?? '') < fechaComprometidaDesde) return false
     if (fechaComprometidaHasta && (item.fecha_finalizacion_inicial ?? '') > fechaComprometidaHasta) return false
+    if (criticoFilter === 'critico' && !item.estado_critico) return false
+    if (criticoFilter === 'normal' && item.estado_critico) return false
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -2134,7 +2147,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => {
     setPage(1)
-  }, [search, personaFilter, statusFilter, fechaComprometidaDesde, fechaComprometidaHasta, pageSize, items.length])
+  }, [search, personaFilter, statusFilter, fechaComprometidaDesde, fechaComprometidaHasta, criticoFilter, pageSize, items.length])
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -2246,6 +2259,22 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
             <option value="">Todos los estados</option>
             {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <select
+            value={criticoFilter}
+            onChange={e => setCriticoFilter(e.target.value as 'all' | 'critico' | 'normal')}
+            className={clsx(
+              'rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
+              criticoFilter === 'critico'
+                ? 'border-red-300 bg-red-50 text-red-700'
+                : criticoFilter === 'normal'
+                ? 'border-green-300 bg-green-50 text-green-700'
+                : 'text-corporate-muted bg-white border-corporate-line',
+            )}
+          >
+            <option value="all">Todos los críticos</option>
+            <option value="critico">Solo críticos</option>
+            <option value="normal">Solo no críticos</option>
+          </select>
           <div className="flex items-center gap-1">
             <label className="text-xs text-corporate-muted whitespace-nowrap">F. comprometida:</label>
             <input
@@ -2324,6 +2353,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
                 <th className="min-w-[110px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Proyecto</th>
                 <th className="min-w-[140px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Status</th>
+                <th className="min-w-[100px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">Estado crítico</th>
                 <th className="min-w-[110px] px-3 py-3 text-center font-semibold">Acciones</th>
               </tr>
             </thead>
@@ -2448,6 +2478,26 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                           setItems(prev => prev.map(it => it.id === item.id ? { ...it, ...patch } : it))
                         }
                       />
+                    </td>
+                    <td
+                      className={clsx(
+                        'px-2 py-2 text-center border-r border-corporate-line/30 cursor-pointer transition-colors',
+                        item.estado_critico
+                          ? 'bg-red-100 hover:bg-red-200'
+                          : 'hover:bg-gray-100',
+                      )}
+                      onClick={() => handleToggleCritico(item)}
+                      title={item.estado_critico ? 'Crítico — clic para quitar' : 'Normal — clic para marcar como crítico'}
+                    >
+                      {item.estado_critico ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
+                          ✕ Crítico
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-gray-300 px-2 py-0.5 text-[11px] text-gray-400">
+                          + Marcar
+                        </span>
+                      )}
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex items-center justify-center gap-1">

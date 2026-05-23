@@ -148,18 +148,7 @@ export interface BacklogItem {
   etc: number | null
   escalados: { fecha_escalado: string; fecha_reinicio: string | null }[]
   prn: string | null
-}
-
-export interface IncidenteItem {
-  id: number
-  numero: string | null
-  equipo: string | null
-  fecha_escalado: string | null
-  estado_sn: string | null
-  jira: string | null
-  comentario: string | null
-  fecha_respuesta: string | null
-  dias: number | null
+  estado_critico: boolean
 }
 
 export interface AlertaItem {

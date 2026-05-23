@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom'
-import { MessageSquare, LayoutDashboard, Settings2, ShieldCheck, Calculator, Factory, AlertCircle, Upload, FileUp, LogOut, KeyRound } from 'lucide-react'
+import { MessageSquare, LayoutDashboard, Settings2, ShieldCheck, Calculator, Factory, Upload, LogOut, KeyRound } from 'lucide-react'
 import { LoginPage } from './pages/LoginPage'
 import { useAuthStore } from './stores/authStore'
 import { verifyToken } from './services/api'
@@ -11,16 +11,12 @@ const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m
 const ConfigPage = lazy(() => import('./pages/ConfigPage').then((m) => ({ default: m.ConfigPage })))
 const EstimationPage = lazy(() => import('./pages/EstimationPage').then((m) => ({ default: m.EstimationPage })))
 const FabricaPage = lazy(() => import('./pages/FabricaPage').then((m) => ({ default: m.FabricaPage })))
-const IncidentesPage = lazy(() => import('./pages/IncidentesPage').then((m) => ({ default: m.IncidentesPage })))
 const UploadPage = lazy(() => import('./pages/UploadPage').then((m) => ({ default: m.UploadPage })))
-const UploadIncidentesPage = lazy(() => import('./pages/UploadIncidentesPage').then((m) => ({ default: m.UploadIncidentesPage })))
 
 const navItems = [
   { to: '/', label: 'Módulo de Mejora Continua', icon: LayoutDashboard, end: true },
   { to: '/fabrica', label: 'Módulo de Fábrica', icon: Factory },
-  { to: '/incidentes', label: 'Módulo de Incidentes', icon: AlertCircle },
   { to: '/upload', label: 'Subir Info MD/FA', icon: Upload },
-  { to: '/upload-incidentes', label: 'Subir Incidentes', icon: FileUp },
   { to: '/chat', label: 'Agente IA', icon: MessageSquare },
   { to: '/estimacion', label: 'Estimación', icon: Calculator },
 ]
@@ -139,9 +135,7 @@ function Layout() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/fabrica" element={<FabricaPage />} />
-            <Route path="/incidentes" element={<IncidentesPage />} />
             <Route path="/upload" element={<UploadPage />} />
-            <Route path="/upload-incidentes" element={<UploadIncidentesPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/estimacion" element={<EstimationPage />} />
             <Route

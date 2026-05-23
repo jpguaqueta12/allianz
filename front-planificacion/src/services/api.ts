@@ -92,12 +92,6 @@ export async function getFabricaDashboard(piId?: number | null): Promise<Dashboa
   return r.json()
 }
 
-export async function getIncidentesDashboard(): Promise<DashboardData> {
-  const r = await fetch(`${BASE}/dashboard/incidentes`)
-  if (!r.ok) { const e = await r.json().catch(() => ({ detail: 'Error cargando dashboard de incidentes' })); throw new Error(e.detail) }
-  return r.json()
-}
-
 // ── Capacidad personas ────────────────────────────────────────────────────────
 
 export async function crearPersonaEnCapacidad(
@@ -519,6 +513,23 @@ export async function updateBacklogStatus(
   return r.json()
 }
 
+export async function updateEstadoCritico(
+  modulo: string,
+  ticketId: number,
+  estadoCritico: boolean,
+): Promise<{ ok: boolean; estado_critico: boolean }> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/estado-critico`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ estado_critico: estadoCritico }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error guardando estado crítico' }))
+    throw new Error(err.detail ?? 'Error guardando estado crítico')
+  }
+  return r.json()
+}
+
 export async function deleteBacklogItem(modulo: string, ticketId: number): Promise<{ deleted: boolean; id: number }> {
   const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}`, { method: 'DELETE' })
   if (!r.ok) {
@@ -679,28 +690,6 @@ export interface BacklogImportResult {
   total_procesados: number
 }
 
-export interface IncidenteTicket {
-  numero: string | null
-  equipo: string | null
-  fecha_escalado: string | null
-  estado_sn: string | null
-  jira: string | null
-  comentario: string | null
-  fecha_respuesta: string | null
-  dias: number | null
-}
-
-export interface IncidentesAnalisis {
-  total: number
-  muestra: IncidenteTicket[]
-}
-
-export interface IncidentesImportResult {
-  insertados: number
-  duplicados_omitidos: number
-  total_procesados: number
-}
-
 export async function analizarBacklog(file: File): Promise<BacklogAnalisis> {
   const form = new FormData()
   form.append('file', file)
@@ -719,28 +708,6 @@ export async function importarBacklog(file: File): Promise<BacklogImportResult> 
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: 'Error importando el backlog' }))
     throw new Error(err.detail ?? 'Error importando el backlog')
-  }
-  return r.json()
-}
-
-export async function analizarIncidentes(file: File): Promise<IncidentesAnalisis> {
-  const form = new FormData()
-  form.append('file', file)
-  const r = await fetch(`${BASE}/upload/analizar-incidentes`, { method: 'POST', body: form })
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({ detail: 'Error analizando el archivo' }))
-    throw new Error(err.detail ?? 'Error analizando el archivo')
-  }
-  return r.json()
-}
-
-export async function importarIncidentes(file: File): Promise<IncidentesImportResult> {
-  const form = new FormData()
-  form.append('file', file)
-  const r = await fetch(`${BASE}/upload/importar-incidentes`, { method: 'POST', body: form })
-  if (!r.ok) {
-    const err = await r.json().catch(() => ({ detail: 'Error importando incidentes' }))
-    throw new Error(err.detail ?? 'Error importando incidentes')
   }
   return r.json()
 }

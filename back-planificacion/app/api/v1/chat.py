@@ -151,23 +151,6 @@ async def get_dashboard_fabrica(pi_id: Optional[int] = Query(default=None)):
     }
 
 
-@router.get("/dashboard/incidentes")
-async def get_dashboard_incidentes():
-    from app.db.connection import get_pool
-    import app.db.queries as Q
-    pool = get_pool()
-    capacidad, proyectos, pi_activo = await asyncio.gather(
-        Q.get_capacidad_personas(pool, 'INCIDENTES'),
-        Q.get_resumen_proyectos(pool, 'INCIDENTES'),
-        Q.get_pi_activo(pool, 'INCIDENTES'),
-    )
-    return {
-        "capacidad": capacidad,
-        "resumen_proyectos": proyectos,
-        "pi_activo": pi_activo,
-    }
-
-
 # ─── BACKLOG ─────────────────────────────────────────────────────────────────
 
 @router.get("/backlog/{modulo}/responsables")
@@ -317,6 +300,20 @@ async def update_project(modulo: str, ticket_id: int, body: dict):
     return {"ok": True, "project": body.get("project")}
 
 
+@router.patch("/backlog/{modulo}/{ticket_id}/estado-critico")
+async def update_estado_critico(modulo: str, ticket_id: int, body: dict):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    mod = modulo.upper()
+    if mod not in ("MEJORA_CONTINUA", "FABRICA"):
+        raise HTTPException(status_code=400, detail="Módulo no soportado")
+    estado_critico = bool(body.get("estado_critico", False))
+    updated = await Q.update_estado_critico(get_pool(), mod, ticket_id, estado_critico)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    return {"ok": True, "estado_critico": estado_critico}
+
+
 @router.delete("/backlog/{modulo}/{ticket_id}")
 async def delete_backlog(modulo: str, ticket_id: int):
     from app.db.connection import get_pool
@@ -357,13 +354,6 @@ async def get_backlog(modulo: str, pi_id: Optional[int] = Query(default=None)):
     import app.db.queries as Q
     pool = get_pool()
     mod = modulo.upper()
-    if mod == "INCIDENTES":
-        pi_id = await pool.fetchval(
-            "SELECT id FROM pi WHERE activo=TRUE AND modulo='INCIDENTES' LIMIT 1"
-        )
-        if not pi_id:
-            raise HTTPException(status_code=404, detail=_NO_PI_MSG)
-        return await Q.get_backlog_incidentes(pool, pi_id)
     selected_pi_id = pi_id
     if selected_pi_id is None:
         # FABRICA comparte PI activo con MEJORA_CONTINUA

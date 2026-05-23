@@ -246,24 +246,6 @@ SCHEMA_STATEMENTS = [
     END
     """,
     """
-    IF OBJECT_ID('dbo.backlog_incidentes', 'U') IS NULL
-    BEGIN
-        CREATE TABLE dbo.backlog_incidentes (
-            id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-            numero NVARCHAR(80) NULL,
-            equipo NVARCHAR(150) NULL,
-            fecha_escalado DATETIME2 NULL,
-            estado_sn NVARCHAR(100) NULL,
-            jira NVARCHAR(120) NULL,
-            comentario NVARCHAR(MAX) NULL,
-            fecha_respuesta DATETIME2 NULL,
-            dias INT NULL,
-            pi_id INT NULL,
-            CONSTRAINT FK_bi_pi FOREIGN KEY (pi_id) REFERENCES dbo.pi(id)
-        );
-    END
-    """,
-    """
     IF OBJECT_ID('dbo.sla_policies', 'U') IS NULL
     BEGIN
         CREATE TABLE dbo.sla_policies (
@@ -363,6 +345,8 @@ SCHEMA_STATEMENTS = [
     "IF COL_LENGTH('dbo.backlog_mejora_continua', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD fecha_finalizacion_inicial DATE NULL;",
     "IF COL_LENGTH('dbo.backlog_fabrica', 'escalados') IS NULL ALTER TABLE dbo.backlog_fabrica ADD escalados NVARCHAR(MAX) NULL;",
     "IF COL_LENGTH('dbo.backlog_fabrica', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_fabrica ADD fecha_finalizacion_inicial DATE NULL;",
+    "IF COL_LENGTH('dbo.backlog_mejora_continua', 'estado_critico') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD estado_critico BIT NOT NULL CONSTRAINT DF_bmc_estado_critico DEFAULT 0;",
+    "IF COL_LENGTH('dbo.backlog_fabrica', 'estado_critico') IS NULL ALTER TABLE dbo.backlog_fabrica ADD estado_critico BIT NOT NULL CONSTRAINT DF_bfab_estado_critico DEFAULT 0;",
     """
     IF OBJECT_ID('dbo.usuarios', 'U') IS NULL
     BEGIN
@@ -387,7 +371,6 @@ INDEX_STATEMENTS = [
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_cppi_pi_proyecto' AND object_id=OBJECT_ID('dbo.capacidad_proyecto_pi')) CREATE INDEX idx_cppi_pi_proyecto ON dbo.capacidad_proyecto_pi(pi_id, proyecto_id);",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='uq_bmc_ticket_pi' AND object_id=OBJECT_ID('dbo.backlog_mejora_continua')) CREATE UNIQUE INDEX uq_bmc_ticket_pi ON dbo.backlog_mejora_continua(ticket_key, pi_id) WHERE ticket_key IS NOT NULL;",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='uq_bfab_ticket_pi' AND object_id=OBJECT_ID('dbo.backlog_fabrica')) CREATE UNIQUE INDEX uq_bfab_ticket_pi ON dbo.backlog_fabrica(ticket_key, pi_id) WHERE ticket_key IS NOT NULL;",
-    "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='uq_bi_numero_pi' AND object_id=OBJECT_ID('dbo.backlog_incidentes')) CREATE UNIQUE INDEX uq_bi_numero_pi ON dbo.backlog_incidentes(numero, pi_id) WHERE numero IS NOT NULL;",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_audit_entity' AND object_id=OBJECT_ID('dbo.agent_audit_log')) CREATE INDEX idx_audit_entity ON dbo.agent_audit_log(entity_type, entity_key, created_at DESC);",
     "IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='idx_sla_lookup' AND object_id=OBJECT_ID('dbo.sla_policies')) CREATE INDEX idx_sla_lookup ON dbo.sla_policies(modulo, issue_type, priority, activo);",
 ]

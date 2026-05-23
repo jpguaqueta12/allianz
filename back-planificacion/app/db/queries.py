@@ -920,21 +920,6 @@ async def get_responsables_disponibles(pool: Any, modulo: str, pi_id: int | None
     return result
 
 
-async def get_backlog_incidentes(pool: Any, pi_id: int) -> list[dict]:
-    rows = await pool.fetch("""
-        SELECT
-            id, numero, equipo,
-            to_char(fecha_escalado, 'YYYY-MM-DD HH24:MI') AS fecha_escalado,
-            estado_sn, jira, comentario,
-            to_char(fecha_respuesta, 'YYYY-MM-DD HH24:MI') AS fecha_respuesta,
-            dias
-        FROM backlog_incidentes
-        WHERE pi_id = $1
-        ORDER BY fecha_escalado DESC NULLS LAST
-    """, pi_id)
-    return [dict(r) for r in rows]
-
-
 async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
     table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
     rows = await pool.fetch(f"""
@@ -970,6 +955,7 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             to_char(fecha_entrega,              'YYYY-MM-DD') AS fecha_entrega,
             COALESCE(etc, 0)::int AS etc,
             COALESCE(escalados, '[]') AS escalados,
+            COALESCE(estado_critico, 0)::int AS estado_critico,
             -- total calculado
             COALESCE(horas_analisis_java,0) + COALESCE(horas_analisis_cobol,0)
             + COALESCE(horas_analisis_dialogue,0) + COALESCE(horas_analisis_parametria,0)
@@ -1112,6 +1098,15 @@ async def update_backlog_project(pool: Any, modulo: str, ticket_id: int, project
         f"UPDATE {table} SET project=$1 WHERE id=$2",
         project or None,
         ticket_id,
+    )
+    return result == "UPDATE 1"
+
+
+async def update_estado_critico(pool: Any, modulo: str, ticket_id: int, estado_critico: bool) -> bool:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    result = await pool.execute(
+        f"UPDATE {table} SET estado_critico=$1 WHERE id=$2",
+        estado_critico, ticket_id,
     )
     return result == "UPDATE 1"
 
@@ -1881,14 +1876,10 @@ async def delete_pi(pool: Any, pi_id: int) -> dict | None:
                 "backlog_fabrica": await conn.fetchval(
                     "SELECT COUNT(*) FROM backlog_fabrica WHERE pi_id=$1", pi_id
                 ) or 0,
-                "backlog_incidentes": await conn.fetchval(
-                    "SELECT COUNT(*) FROM backlog_incidentes WHERE pi_id=$1", pi_id
-                ) or 0,
             }
 
             await conn.execute("DELETE FROM backlog_mejora_continua WHERE pi_id=$1", pi_id)
             await conn.execute("DELETE FROM backlog_fabrica WHERE pi_id=$1", pi_id)
-            await conn.execute("DELETE FROM backlog_incidentes WHERE pi_id=$1", pi_id)
 
             for table in ("capacidad_semanal_persona", "pi_velocidad_historica"):
                 if await table_exists(table):
