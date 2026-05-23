@@ -314,6 +314,21 @@ async def update_estado_critico(modulo: str, ticket_id: int, body: dict):
     return {"ok": True, "estado_critico": estado_critico}
 
 
+@router.patch("/backlog/{modulo}/{ticket_id}/horas-reales-etc")
+async def update_horas_reales_etc(modulo: str, ticket_id: int, body: dict):
+    from app.db.connection import get_pool
+    import app.db.queries as Q
+    mod = modulo.upper()
+    if mod not in ("MEJORA_CONTINUA", "FABRICA"):
+        raise HTTPException(status_code=400, detail="Módulo no soportado")
+    raw = body.get("horas_reales_etc")
+    horas = int(raw) if raw is not None else None
+    updated = await Q.update_horas_reales_etc(get_pool(), mod, ticket_id, horas)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Ticket no encontrado")
+    return {"ok": True, "horas_reales_etc": horas}
+
+
 @router.delete("/backlog/{modulo}/{ticket_id}")
 async def delete_backlog(modulo: str, ticket_id: int):
     from app.db.connection import get_pool

@@ -956,6 +956,7 @@ async def get_backlog(pool: Any, modulo: str, pi_id: int) -> list[dict]:
             COALESCE(etc, 0)::int AS etc,
             COALESCE(escalados, '[]') AS escalados,
             COALESCE(estado_critico, 0)::int AS estado_critico,
+            horas_reales_etc,
             -- total calculado
             COALESCE(horas_analisis_java,0) + COALESCE(horas_analisis_cobol,0)
             + COALESCE(horas_analisis_dialogue,0) + COALESCE(horas_analisis_parametria,0)
@@ -1107,6 +1108,15 @@ async def update_estado_critico(pool: Any, modulo: str, ticket_id: int, estado_c
     result = await pool.execute(
         f"UPDATE {table} SET estado_critico=$1 WHERE id=$2",
         estado_critico, ticket_id,
+    )
+    return result == "UPDATE 1"
+
+
+async def update_horas_reales_etc(pool: Any, modulo: str, ticket_id: int, horas: int | None) -> bool:
+    table = "backlog_mejora_continua" if modulo == "MEJORA_CONTINUA" else "backlog_fabrica"
+    result = await pool.execute(
+        f"UPDATE {table} SET horas_reales_etc=$1 WHERE id=$2",
+        horas, ticket_id,
     )
     return result == "UPDATE 1"
 

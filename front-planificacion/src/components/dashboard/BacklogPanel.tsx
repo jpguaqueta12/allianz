@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 import clsx from 'clsx'
 import { BacklogItem, PiInfo, ResumenProyecto } from '../../types'
 import {
-  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, patchPlanificacionItem, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject, updateEstadoCritico,
+  getBacklog, createBacklogItem, deleteBacklogItem, updatePlanificacion, patchPlanificacionItem, updateFechaAsignacion, updateFechaComprometidaCliente, updateFechaFinalizacion, updateEscalamiento, updateBacklogStatus, getResponsables, updateBacklogProject, updateEstadoCritico, updateHorasRealesEtc,
   CreateBacklogData, PlanificacionData, PlanificacionItem, ResponsableDisponible,
 } from '../../services/api'
 
@@ -684,8 +684,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
       return
     }
     const invalidDates = activeRows.some(row =>
-      (row.fecha_inicio && row.fecha_fin && row.fecha_fin < row.fecha_inicio) ||
-      (row.fecha_inicio && row.fecha_escalamiento && row.fecha_escalamiento < row.fecha_inicio)
+      (row.fecha_inicio && row.fecha_fin && row.fecha_fin < row.fecha_inicio)
     )
     if (invalidDates) {
       setError('Las fechas por asignación no son consistentes')
@@ -781,7 +780,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                     <th className="px-3 py-2.5 text-right font-semibold">Horas</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Inicio</th>
                     <th className="px-3 py-2.5 text-left font-semibold">Fin</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Esc.</th>
                     <th className="w-10 px-2 py-2.5" />
                   </tr>
                 </thead>
@@ -881,14 +879,6 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                             className="w-32 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
                           />
                         </td>
-                        <td className="border-b border-corporate-line px-3 py-2">
-                          <input
-                            type="date"
-                            value={row.fecha_escalamiento ?? ''}
-                            onChange={e => updateRow(row.id, { fecha_escalamiento: e.target.value || null })}
-                            className="w-32 rounded border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-                          />
-                        </td>
                         <td className="border-b border-corporate-line px-2 py-2 text-center">
                           <button
                             type="button"
@@ -909,7 +899,7 @@ function PlanificacionModal({ item, modulo, onClose, onSaved, onCapacityRefresh,
                     <td className="px-3 py-2.5 text-right text-sm font-bold">
                       {totalGeneral > 0 ? totalGeneral : <span className="text-slate-500 font-normal text-xs">—</span>}
                     </td>
-                    <td colSpan={4} />
+                    <td colSpan={3} />
                   </tr>
                 </tfoot>
               </table>
@@ -1144,7 +1134,7 @@ function PlanItemsTable({
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-corporate-muted">
             <tr>
-              {['Tarea', 'Subtarea', 'Status', 'Observación', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin', 'Esc.'].map(h => (
+              {['Tarea', 'Subtarea', 'Status', 'Observación', 'Responsable', 'Perfil', 'Horas', 'Inicio', 'Fin'].map(h => (
                 <th key={h} className="px-2 py-1.5 text-left font-semibold">{h}</th>
               ))}
             </tr>
@@ -1175,7 +1165,6 @@ function PlanItemsTable({
                 <td className="px-2 py-1.5 text-right font-mono">{row.horas ?? '—'}</td>
                 <td className="px-2 py-1.5">{row.fecha_inicio ?? '—'}</td>
                 <td className="px-2 py-1.5">{row.fecha_fin ?? '—'}</td>
-                <td className="px-2 py-1.5">{row.fecha_escalamiento ?? '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -1513,6 +1502,62 @@ function FechaComprometidaClienteCell({
         className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-corporate-ink placeholder-corporate-muted focus:border-gray-400 focus:bg-white focus:outline-none disabled:opacity-50"
       />
       {saving && <Loader2 size={12} className="animate-spin text-gray-500 shrink-0" />}
+    </div>
+  )
+}
+
+function HorasRealesEtcCell({
+  item,
+  modulo,
+  onSaved,
+}: {
+  item: BacklogItem
+  modulo: string
+  onSaved: (horas: number | null) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [value, setValue]   = useState(item.horas_reales_etc != null ? String(item.horas_reales_etc) : '')
+  const valueRef  = useRef(item.horas_reales_etc != null ? String(item.horas_reales_etc) : '')
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    if (savingRef.current) return
+    const v = item.horas_reales_etc != null ? String(item.horas_reales_etc) : ''
+    setValue(v)
+    valueRef.current = v
+  }, [item.horas_reales_etc])
+
+  function commit() {
+    const trimmed = valueRef.current.trim()
+    const current = item.horas_reales_etc != null ? String(item.horas_reales_etc) : ''
+    if (trimmed === current) return
+    const parsed = trimmed === '' ? null : parseInt(trimmed, 10)
+    if (trimmed !== '' && (isNaN(parsed!) || parsed! < 0)) {
+      setValue(current); valueRef.current = current; return
+    }
+    savingRef.current = true
+    setSaving(true)
+    updateHorasRealesEtc(modulo, item.id, parsed)
+      .then(res => onSaved(res.horas_reales_etc))
+      .catch(() => { setValue(current); valueRef.current = current })
+      .finally(() => { savingRef.current = false; setSaving(false) })
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <input
+        type="number"
+        min="0"
+        step="1"
+        value={value}
+        placeholder="—"
+        onChange={e => { setValue(e.target.value); valueRef.current = e.target.value }}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+        disabled={saving}
+        className="w-16 rounded border border-transparent bg-transparent px-1 py-0.5 text-right text-xs font-mono text-orange-700 placeholder-corporate-muted focus:border-orange-400 focus:bg-white focus:outline-none disabled:opacity-50"
+      />
+      {saving && <Loader2 size={11} className="animate-spin text-orange-500 shrink-0" />}
     </div>
   )
 }
@@ -2233,94 +2278,117 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       )}
 
       <div className="space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
-        {/* barra búsqueda */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* fila 1: búsqueda + acciones */}
+        <div className="flex items-center gap-2">
           <input type="text" placeholder="Buscar por ticket, resumen, épica, asignado, responsable, tarea…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="min-w-[220px] flex-1 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none focus:ring-1 focus:ring-allianz-blue" />
-          <select
-            value={personaFilter}
-            onChange={e => setPersonaFilter(e.target.value)}
-            className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-          >
-            <option value="">Todas las personas</option>
-            {personaOptions.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className={clsx(
-              'rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
-              statusFilter
-                ? (STATUS_COLOR[statusFilter] ?? 'text-corporate-ink bg-white border-corporate-line')
-                : 'text-corporate-muted bg-white border-corporate-line',
-            )}
-          >
-            <option value="">Todos los estados</option>
-            {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select
-            value={criticoFilter}
-            onChange={e => setCriticoFilter(e.target.value as 'all' | 'critico' | 'normal')}
-            className={clsx(
-              'rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
-              criticoFilter === 'critico'
-                ? 'border-red-300 bg-red-50 text-red-700'
-                : criticoFilter === 'normal'
-                ? 'border-green-300 bg-green-50 text-green-700'
-                : 'text-corporate-muted bg-white border-corporate-line',
-            )}
-          >
-            <option value="all">Todos los críticos</option>
-            <option value="critico">Solo críticos</option>
-            <option value="normal">Solo no críticos</option>
-          </select>
-          <div className="flex items-center gap-1">
-            <label className="text-xs text-corporate-muted whitespace-nowrap">F. comprometida:</label>
-            <input
-              type="date"
-              value={fechaComprometidaDesde}
-              onChange={e => setFechaComprometidaDesde(e.target.value)}
-              className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-              title="Desde fecha comprometida"
-            />
-            <span className="text-xs text-corporate-muted">–</span>
-            <input
-              type="date"
-              value={fechaComprometidaHasta}
-              onChange={e => setFechaComprometidaHasta(e.target.value)}
-              className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
-              title="Hasta fecha comprometida"
-            />
-            {(fechaComprometidaDesde || fechaComprometidaHasta) && (
-              <button
-                onClick={() => { setFechaComprometidaDesde(''); setFechaComprometidaHasta('') }}
-                className="rounded p-1 text-corporate-muted hover:text-corporate-ink"
-                title="Limpiar filtro de fecha"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <span className="text-xs text-corporate-muted whitespace-nowrap">
+          <span className="text-xs text-corporate-muted whitespace-nowrap shrink-0">
             {filtered.length}/{items.length} tickets
           </span>
           <button onClick={() => setCreating(true)}
-            className="flex items-center gap-1 rounded-lg bg-allianz-blue px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
+            className="shrink-0 flex items-center gap-1 rounded-lg bg-allianz-blue px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
             <Plus size={12} /> Nuevo
           </button>
           <button
             onClick={() => exportExcel(filtered, modulo, piActivo)}
             disabled={filtered.length === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40"
+            className="shrink-0 flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40"
             title={`Exportar ${filtered.length} tickets a Excel`}
           >
             <Download size={13} /> Exportar Excel
           </button>
           <button onClick={load} disabled={loading}
-            className="flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors">
+            className="shrink-0 flex items-center gap-1 rounded-lg border border-corporate-line bg-white px-2.5 py-1.5 text-xs text-corporate-muted hover:text-corporate-ink transition-colors">
             <RefreshCw size={12} /> Actualizar
           </button>
+        </div>
+
+        {/* fila 2: filtros */}
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2 rounded-lg border border-corporate-line bg-slate-50/70 px-3 py-2">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-corporate-muted">Persona</span>
+            <select
+              value={personaFilter}
+              onChange={e => setPersonaFilter(e.target.value)}
+              className="rounded border border-corporate-line bg-white px-2 py-1 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+            >
+              <option value="">Todas</option>
+              {personaOptions.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-corporate-muted">Estado</span>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className={clsx(
+                'rounded border px-2 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
+                statusFilter
+                  ? (STATUS_COLOR[statusFilter] ?? 'text-corporate-ink bg-white border-corporate-line')
+                  : 'text-corporate-muted bg-white border-corporate-line',
+              )}
+            >
+              <option value="">Todos</option>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-corporate-muted">Crítico</span>
+            <select
+              value={criticoFilter}
+              onChange={e => setCriticoFilter(e.target.value as 'all' | 'critico' | 'normal')}
+              className={clsx(
+                'rounded border px-2 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
+                criticoFilter === 'critico'
+                  ? 'border-red-300 bg-red-50 text-red-700'
+                  : criticoFilter === 'normal'
+                  ? 'border-green-300 bg-green-50 text-green-700'
+                  : 'text-corporate-muted bg-white border-corporate-line',
+              )}
+            >
+              <option value="all">Todos</option>
+              <option value="critico">Solo críticos</option>
+              <option value="normal">Solo normales</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-corporate-muted">F. comprometida</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={fechaComprometidaDesde}
+                onChange={e => setFechaComprometidaDesde(e.target.value)}
+                className="rounded border border-corporate-line bg-white px-2 py-1 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                title="Desde"
+              />
+              <span className="text-xs text-corporate-muted">–</span>
+              <input
+                type="date"
+                value={fechaComprometidaHasta}
+                onChange={e => setFechaComprometidaHasta(e.target.value)}
+                className="rounded border border-corporate-line bg-white px-2 py-1 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+                title="Hasta"
+              />
+              {(fechaComprometidaDesde || fechaComprometidaHasta) && (
+                <button
+                  onClick={() => { setFechaComprometidaDesde(''); setFechaComprometidaHasta('') }}
+                  className="rounded p-1 text-corporate-muted hover:text-corporate-ink"
+                  title="Limpiar"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+          </div>
+          {(personaFilter || statusFilter || criticoFilter !== 'all' || fechaComprometidaDesde || fechaComprometidaHasta) && (
+            <button
+              onClick={() => { setPersonaFilter(''); setStatusFilter(''); setCriticoFilter('all'); setFechaComprometidaDesde(''); setFechaComprometidaHasta('') }}
+              className="self-end flex items-center gap-1 rounded border border-corporate-line bg-white px-2 py-1 text-[11px] text-corporate-muted hover:text-red-600 hover:border-red-300 transition-colors"
+            >
+              <X size={11} /> Limpiar filtros
+            </button>
+          )}
         </div>
 
         <PaginationControls
@@ -2337,7 +2405,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
         {/* tabla */}
         <div className="overflow-hidden rounded-xl border border-corporate-line shadow-sm">
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[1160px] table-auto text-xs border-collapse">
+          <table className="w-full min-w-[1280px] table-auto text-xs border-collapse">
             <thead>
               <tr className="bg-slate-800 text-white">
                 <th className="min-w-[130px] px-3 py-3 text-left font-semibold border-r border-white/10 shrink-0">Tareas</th>
@@ -2347,7 +2415,8 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                 <th className="min-w-[120px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">F. Fin Real</th>
                 <th className="min-w-[90px] px-3 py-3 text-center font-semibold whitespace-nowrap border-r border-white/10">PRN</th>
                 <th className="min-w-[240px] px-3 py-3 text-left font-semibold whitespace-nowrap border-r border-white/10">Escalados</th>
-                <th className="min-w-[110px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC</th>
+                <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">ETC Días</th>
+                <th className="min-w-[100px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Hs. reales ETC</th>
                 <th className="px-3 py-3 text-left font-semibold border-r border-white/10">Summary</th>
                 <th className="min-w-[160px] px-3 py-3 text-left font-semibold border-r border-white/10">Equipo</th>
                 <th className="min-w-[80px] px-3 py-3 text-right font-semibold whitespace-nowrap border-r border-white/10">Total h.</th>
@@ -2435,17 +2504,18 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
                       {(() => {
                         const etc = calcularEtc(item, piActivo)
                         return etc > 0
-                          ? (
-                            <span
-                              className="inline-flex flex-col items-end font-mono font-bold leading-tight text-orange-700"
-                              title={formatEtc(etc, piActivo, true)}
-                            >
-                              <span>{etc}d</span>
-                              <span className="text-[10px] font-semibold text-orange-600">{etcHorasReales(etc, piActivo)}h reales</span>
-                            </span>
-                          )
+                          ? <span className="font-mono font-bold text-orange-700">{etc}d</span>
                           : <span className="text-corporate-muted">—</span>
                       })()}
+                    </td>
+                    <td className="px-2 py-1.5 border-r border-corporate-line/30">
+                      <HorasRealesEtcCell
+                        item={item}
+                        modulo={modulo}
+                        onSaved={horas =>
+                          setItems(prev => prev.map(it => it.id === item.id ? { ...it, horas_reales_etc: horas } : it))
+                        }
+                      />
                     </td>
                     <td className="px-3 py-2 align-top border-r border-corporate-line/30">
                       <span className="line-clamp-2 text-corporate-ink leading-snug" title={item.summary}>{item.summary}</span>

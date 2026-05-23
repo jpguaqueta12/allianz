@@ -347,6 +347,8 @@ SCHEMA_STATEMENTS = [
     "IF COL_LENGTH('dbo.backlog_fabrica', 'fecha_finalizacion_inicial') IS NULL ALTER TABLE dbo.backlog_fabrica ADD fecha_finalizacion_inicial DATE NULL;",
     "IF COL_LENGTH('dbo.backlog_mejora_continua', 'estado_critico') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD estado_critico BIT NOT NULL CONSTRAINT DF_bmc_estado_critico DEFAULT 0;",
     "IF COL_LENGTH('dbo.backlog_fabrica', 'estado_critico') IS NULL ALTER TABLE dbo.backlog_fabrica ADD estado_critico BIT NOT NULL CONSTRAINT DF_bfab_estado_critico DEFAULT 0;",
+    "IF COL_LENGTH('dbo.backlog_mejora_continua', 'horas_reales_etc') IS NULL ALTER TABLE dbo.backlog_mejora_continua ADD horas_reales_etc INT NULL;",
+    "IF COL_LENGTH('dbo.backlog_fabrica', 'horas_reales_etc') IS NULL ALTER TABLE dbo.backlog_fabrica ADD horas_reales_etc INT NULL;",
     """
     IF OBJECT_ID('dbo.usuarios', 'U') IS NULL
     BEGIN

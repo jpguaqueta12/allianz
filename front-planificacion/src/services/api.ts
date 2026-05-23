@@ -513,6 +513,23 @@ export async function updateBacklogStatus(
   return r.json()
 }
 
+export async function updateHorasRealesEtc(
+  modulo: string,
+  ticketId: number,
+  horas: number | null,
+): Promise<{ ok: boolean; horas_reales_etc: number | null }> {
+  const r = await fetch(`${BASE}/backlog/${modulo}/${ticketId}/horas-reales-etc`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ horas_reales_etc: horas }),
+  })
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ detail: 'Error guardando horas reales ETC' }))
+    throw new Error(err.detail ?? 'Error guardando horas reales ETC')
+  }
+  return r.json()
+}
+
 export async function updateEstadoCritico(
   modulo: string,
   ticketId: number,

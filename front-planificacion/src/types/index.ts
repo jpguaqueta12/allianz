@@ -149,6 +149,7 @@ export interface BacklogItem {
   escalados: { fecha_escalado: string; fecha_reinicio: string | null }[]
   prn: string | null
   estado_critico: boolean
+  horas_reales_etc: number | null
 }
 
 export interface AlertaItem {
