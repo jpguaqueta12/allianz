@@ -122,6 +122,7 @@ export function DashboardPage() {
                 horasPorPersona={data.pi_activo?.horas_por_persona}
                 onRefresh={refresh}
                 pi={data.pi_activo}
+                modulo="MEJORA_CONTINUA"
               />
             )}
             {tab === 'proyectos' && (

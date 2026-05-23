@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   UserPlus, Trash2, Check, X, AlertTriangle, RefreshCw, Search,
-  Users, Gauge, Clock3, Activity, Layers, ListFilter, ChevronDown, ChevronRight,
+  Users, Clock3, Activity, Layers, ListFilter, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { AsignacionPersona, PersonaCapacidad, PeriodoOcupado, PiInfo } from '../../types'
@@ -15,7 +15,6 @@ import {
   NovedadDisponibilidad,
   removePersonaCapacidad,
   sincronizarCapacidadAPI,
-  updatePersonaCapacidad,
 } from '../../services/api'
 
 function ConfirmModal({
@@ -140,102 +139,6 @@ function formatHours(value: number | null | undefined) {
   return `${Math.round(value * 10) / 10}h`
 }
 
-function EditableCapacityCell({
-  persona,
-  piId,
-  onRefresh,
-}: {
-  persona: PersonaCapacidad
-  piId?: number
-  onRefresh?: () => void
-}) {
-  const [capacidad, setCapacidad] = useState(persona.capacidad?.toString() ?? '')
-  const [reserva, setReserva] = useState((persona.reserva_estimacion_base_horas ?? persona.reserva_estimacion_horas ?? 0).toString())
-  const [periodo, setPeriodo] = useState<'PI' | 'SEMANAL' | 'MENSUAL'>(persona.reserva_estimacion_periodo ?? 'PI')
-  const [senior, setSenior] = useState(!!persona.senior)
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    setCapacidad(persona.capacidad?.toString() ?? '')
-    setReserva((persona.reserva_estimacion_base_horas ?? persona.reserva_estimacion_horas ?? 0).toString())
-    setPeriodo(persona.reserva_estimacion_periodo ?? 'PI')
-    setSenior(!!persona.senior)
-  }, [persona.capacidad, persona.reserva_estimacion_base_horas, persona.reserva_estimacion_horas, persona.reserva_estimacion_periodo, persona.senior])
-
-  async function save(patch: { capacidad_horas?: number | null; reserva_estimacion_horas?: number | null; reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'; senior?: boolean }) {
-    if (!piId || !onRefresh) return
-    setSaving(true)
-    try {
-      await updatePersonaCapacidad(piId, persona.id, patch)
-      onRefresh()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="flex min-w-[220px] flex-col gap-1">
-      <div className="flex items-center gap-1">
-        <input
-          type="number"
-          min="0"
-          step="1"
-          value={capacidad}
-          disabled={saving || !piId}
-          onChange={e => setCapacidad(e.target.value)}
-          onBlur={() => save({ capacidad_horas: capacidad === '' ? null : Number(capacidad) })}
-          className="w-20 rounded border border-corporate-line px-2 py-1 text-right font-mono text-xs disabled:bg-gray-50"
-          title="Capacidad del PI"
-        />
-        <span className="text-[10px] text-corporate-muted">cap.</span>
-        {saving && <RefreshCw size={11} className="animate-spin text-allianz-blue" />}
-      </div>
-      <div className="flex items-center gap-1">
-        <input
-          type="number"
-          min="0"
-          step="0.5"
-          value={reserva}
-          disabled={saving || !piId}
-          onChange={e => setReserva(e.target.value)}
-          onBlur={() => save({ reserva_estimacion_horas: reserva === '' ? 0 : Number(reserva) })}
-          className="w-20 rounded border border-corporate-line px-2 py-1 text-right font-mono text-xs disabled:bg-gray-50"
-          title="Reserva para estimaciones o soporte senior"
-        />
-        <select
-          value={periodo}
-          disabled={saving || !piId}
-          onChange={e => {
-            const next = e.target.value as 'PI' | 'SEMANAL' | 'MENSUAL'
-            setPeriodo(next)
-            save({ reserva_estimacion_periodo: next })
-          }}
-          className="rounded border border-corporate-line bg-white px-1 py-1 text-[10px] text-corporate-muted disabled:bg-gray-50"
-          title="Periodicidad de la reserva"
-        >
-          <option value="PI">PI</option>
-          <option value="SEMANAL">sem.</option>
-          <option value="MENSUAL">mes</option>
-        </select>
-      </div>
-      <p className="text-[10px] text-corporate-muted">efectiva: {formatHours(persona.reserva_estimacion_horas)}</p>
-      <label className="inline-flex items-center gap-1 text-[10px] text-corporate-muted">
-        <input
-          type="checkbox"
-          checked={senior}
-          disabled={saving || !piId}
-          onChange={e => {
-            const checked = e.target.checked
-            setSenior(checked)
-            save({ senior: checked })
-          }}
-          className="h-3 w-3 rounded border-corporate-line"
-        />
-        senior
-      </label>
-    </div>
-  )
-}
 
 function AddPersonaForm({
   horasPorPersona,
@@ -506,85 +409,44 @@ function FilterButton({
 
 function CapacitySummary({
   personas,
-  horasPorPersona,
 }: {
   personas: PersonaCapacidad[]
-  horasPorPersona: number
 }) {
-  const capacidadTotal = personas.reduce((sum, p) => sum + (p.capacidad ?? 0), 0)
-  const cargaTotal = personas.reduce((sum, p) => sum + (p.carga_estimada ?? 0), 0)
-  const reservaTotal = personas.reduce((sum, p) => sum + (p.reserva_estimacion_horas ?? 0), 0)
-  const novedadesTotal = personas.reduce((sum, p) => sum + (p.novedades_horas ?? 0), 0)
   const consumoTotal = personas.reduce((sum, p) => sum + (p.consumo_total ?? p.carga_estimada ?? 0), 0)
-  const disponibleTotal = personas.reduce((sum, p) => sum + (p.horas_disponibles ?? 0), 0)
+  const novedadesTotal = personas.reduce((sum, p) => sum + (p.novedades_horas ?? 0), 0)
   const sobrecargados = personas.filter(p => p.estado === 'SOBRECARGADO')
-  const sinCapacidad = personas.filter(p => p.estado === 'SIN CAPACIDAD' || !p.capacidad)
-  const pctGlobal = capacidadTotal > 0 ? Math.round((consumoTotal / capacidadTotal) * 100) : 0
   const exceso = sobrecargados.reduce((sum, p) => sum + Math.max(0, -(p.horas_disponibles ?? 0)), 0)
-  const parciales = personas.filter(p => p.capacidad != null && p.capacidad !== horasPorPersona)
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <KpiCard
-          label="Capacidad total"
-          value={`${Math.round(capacidadTotal)}h`}
-          icon={Users}
-          tone="blue"
-          detail={`${personas.length} persona${personas.length !== 1 ? 's' : ''}`}
-        />
-        <KpiCard
-          label="Carga planificada"
-          value={`${Math.round(cargaTotal)}h`}
-          icon={Activity}
-          tone={pctGlobal > 100 ? 'red' : pctGlobal > 80 ? 'amber' : 'green'}
-          detail={`${pctGlobal}% con reservas y novedades`}
-        />
-        <KpiCard
-          label="Disponible"
-          value={`${Math.round(disponibleTotal)}h`}
-          icon={Clock3}
-          tone={disponibleTotal < 0 ? 'red' : 'green'}
-          detail={disponibleTotal < 0 ? 'Déficit de capacidad' : 'Saldo del PI'}
-        />
-        <KpiCard
-          label="Reservas"
-          value={`${Math.round(reservaTotal)}h`}
-          icon={AlertTriangle}
-          tone={reservaTotal ? 'amber' : 'neutral'}
-          detail={`${Math.round(novedadesTotal)}h por novedades`}
-        />
-        <KpiCard
-          label="Capacidad parcial"
-          value={parciales.length}
-          icon={Gauge}
-          tone={parciales.length || sinCapacidad.length ? 'amber' : 'neutral'}
-          detail={`${sinCapacidad.length} sin capacidad`}
-        />
-      </div>
-
-      {(sobrecargados.length > 0 || sinCapacidad.length > 0 || parciales.length > 0) && (
-        <div className="grid gap-2 md:grid-cols-3">
-          {sobrecargados.length > 0 && (
-            <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
-              <span className="font-semibold">{sobrecargados.length} persona{sobrecargados.length !== 1 ? 's' : ''} sobrecargada{sobrecargados.length !== 1 ? 's' : ''}</span>
-              <span className="ml-1">suman {Math.round(exceso)}h de exceso.</span>
-            </div>
-          )}
-          {sinCapacidad.length > 0 && (
-            <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              <span className="font-semibold">{sinCapacidad.length} persona{sinCapacidad.length !== 1 ? 's' : ''} sin capacidad</span>
-              <span className="ml-1">requieren revisión.</span>
-            </div>
-          )}
-          {parciales.length > 0 && (
-            <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              <span className="font-semibold">{parciales.length} capacidad{parciales.length !== 1 ? 'es' : ''} parcial{parciales.length !== 1 ? 'es' : ''}</span>
-              <span className="ml-1">distintas a {horasPorPersona}h del PI.</span>
-            </div>
-          )}
-        </div>
-      )}
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <KpiCard
+        label="Personas"
+        value={personas.length}
+        icon={Users}
+        tone="blue"
+        detail={`${sobrecargados.length} sobrecargados`}
+      />
+      <KpiCard
+        label="Horas asignadas"
+        value={`${Math.round(consumoTotal)}h`}
+        icon={Clock3}
+        tone={sobrecargados.length > 0 ? 'red' : 'green'}
+        detail={`${personas.filter(p => p.carga_estimada > 0).length} con asignaciones`}
+      />
+      <KpiCard
+        label="Novedades"
+        value={`${Math.round(novedadesTotal)}h`}
+        icon={AlertTriangle}
+        tone={novedadesTotal > 0 ? 'amber' : 'neutral'}
+        detail="ausencias registradas"
+      />
+      <KpiCard
+        label="Sobrecargados"
+        value={sobrecargados.length}
+        icon={Activity}
+        tone={sobrecargados.length > 0 ? 'red' : 'green'}
+        detail={sobrecargados.length > 0 ? `${Math.round(exceso)}h de exceso` : 'Sin exceso'}
+      />
     </div>
   )
 }
@@ -858,14 +720,14 @@ function CapacityTable({
   onToggleExpand: (personaId: number) => void
 }) {
   const hasActions = !!(piId && onRefresh)
-  const totalCols = 1 + 8 + (hasActions ? 1 : 0)
+  const totalCols = 1 + 4 + (hasActions ? 1 : 0)
   return (
     <DataPanel title={title} description={description}>
       <div className="overflow-x-auto">
         <table className="corporate-table">
           <thead>
             <tr>
-              {['', 'Nombre', 'Tecnología', 'Capacidad / Reserva', 'Carga', 'Novedades', 'Disponible', 'Ocupación', 'Estado', ...(hasActions ? [''] : [])].map((h, i) => (
+              {['', 'Nombre', 'Tecnología', 'Horas asignadas', 'Estado', ...(hasActions ? [''] : [])].map((h, i) => (
                 <th key={i}>{h}</th>
               ))}
             </tr>
@@ -889,14 +751,16 @@ function CapacityTable({
                 </td>
               </tr>
             ) : rows.flatMap((p) => {
-              const pct = ocupacionPct(p)
-              const capDiffersFromPi = horasPorPersona != null && p.capacidad != null && p.capacidad !== horasPorPersona
-              const disponible = p.horas_disponibles ?? null
-              const over = Math.max(0, -(disponible ?? 0))
               const isExpanded = expandedId === p.id
               const numAsignaciones = p.asignaciones?.length ?? 0
               const rowEls = [
-                <tr key={p.id} className="hover:bg-corporate-surface">
+                <tr key={p.id} className={clsx(
+                  'border-l-4 hover:bg-blue-50/30 transition-colors',
+                  p.estado === 'SOBRECARGADO' ? 'border-l-red-500' :
+                  p.estado === 'OCUPADO' ? 'border-l-amber-400' :
+                  p.estado === 'DISPONIBLE' ? 'border-l-green-400' :
+                  'border-l-transparent',
+                )}>
                   <td className="w-8">
                     <button
                       type="button"
@@ -910,36 +774,15 @@ function CapacityTable({
                       )}
                     </button>
                   </td>
-                  <td className="whitespace-nowrap font-medium text-corporate-ink">{p.nombre}</td>
+                  <td className="whitespace-nowrap font-medium text-corporate-ink">
+                    {p.nombre}
+                    {p.senior && (
+                      <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Senior</span>
+                    )}
+                  </td>
                   <td><StatusBadge tone={tecnologiaTone(p.tecnologia) as never}>{tecnologiaLabel(p.tecnologia)}</StatusBadge></td>
-                  <td className="font-mono">
-                    <EditableCapacityCell persona={p} piId={piId} onRefresh={onRefresh} />
-                    {capDiffersFromPi && <p className="mt-1 text-[10px] text-amber-700">Capacidad distinta al PI</p>}
-                  </td>
-                  <td className="text-right font-mono">{formatHours(p.carga_estimada)}</td>
-                  <td className="text-right font-mono">{formatHours(p.novedades_horas)}</td>
-                  <td className={clsx(
-                    'text-right font-mono',
-                    (disponible ?? 0) < 0 ? 'text-red-600 font-bold' : 'text-green-700',
-                  )}>
-                    {formatHours(disponible)}
-                    {over > 0 && <span className="ml-1 text-[10px] font-semibold text-red-600">+{formatHours(over)}</span>}
-                  </td>
-                  <td className="min-w-[150px]">
-                    {pct != null ? (
-                      <div className="space-y-1" title={`${formatHours(p.consumo_total ?? p.carga_estimada)} de ${formatHours(p.capacidad)}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] text-corporate-muted">{formatHours(p.consumo_total ?? p.carga_estimada)} / {formatHours(p.capacidad)}</span>
-                          <span className="font-mono text-xs">{pct}%</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-gray-200">
-                          <div
-                            className={clsx('h-2 rounded-full', pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : pct > 50 ? 'bg-blue-500' : 'bg-green-500')}
-                            style={{ width: `${Math.min(pct, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ) : '—'}
+                  <td className="text-right">
+                    <span className="font-mono font-semibold text-corporate-ink">{formatHours(p.consumo_total ?? p.carga_estimada)}</span>
                   </td>
                   <td>
                     <StatusBadge tone={estadoColor[p.estado] as never}>{p.estado}</StatusBadge>
@@ -1077,7 +920,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
         )
       )}
 
-      <CapacitySummary personas={personas} horasPorPersona={horasPorPersona} />
+      <CapacitySummary personas={personas} />
 
       <NovedadesPanel piId={piId} personas={personas} onRefresh={onRefresh} />
 
