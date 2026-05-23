@@ -2035,6 +2035,8 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
   const [search, setSearch]   = useState('')
   const [personaFilter, setPersonaFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [fechaComprometidaDesde, setFechaComprometidaDesde] = useState('')
+  const [fechaComprometidaHasta, setFechaComprometidaHasta] = useState('')
   const [editing, setEditing] = useState<BacklogItem | null>(null)
   const [viewing, setViewing] = useState<BacklogItem | null>(null)
   const [creating, setCreating] = useState(false)
@@ -2105,6 +2107,8 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
       if (!assignedToPersona) return false
     }
     if (statusFilter && (item.status ?? '') !== statusFilter) return false
+    if (fechaComprometidaDesde && (item.fecha_finalizacion_inicial ?? '') < fechaComprometidaDesde) return false
+    if (fechaComprometidaHasta && (item.fecha_finalizacion_inicial ?? '') > fechaComprometidaHasta) return false
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -2130,7 +2134,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
 
   useEffect(() => {
     setPage(1)
-  }, [search, personaFilter, statusFilter, pageSize, items.length])
+  }, [search, personaFilter, statusFilter, fechaComprometidaDesde, fechaComprometidaHasta, pageSize, items.length])
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -2215,16 +2219,16 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
         />
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
         {/* barra búsqueda */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <input type="text" placeholder="Buscar por ticket, resumen, épica, asignado, responsable, tarea…"
             value={search} onChange={e => setSearch(e.target.value)}
-            className="flex-1 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none focus:ring-1 focus:ring-allianz-blue" />
+            className="min-w-[220px] flex-1 rounded-lg border border-corporate-line bg-white px-3 py-1.5 text-xs text-corporate-ink placeholder:text-corporate-muted focus:outline-none focus:ring-1 focus:ring-allianz-blue" />
           <select
             value={personaFilter}
             onChange={e => setPersonaFilter(e.target.value)}
-            className="max-w-[220px] rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+            className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
           >
             <option value="">Todas las personas</option>
             {personaOptions.map(nombre => <option key={nombre} value={nombre}>{nombre}</option>)}
@@ -2233,7 +2237,7 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
             className={clsx(
-              'max-w-[180px] rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
+              'rounded-lg border px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-allianz-blue',
               statusFilter
                 ? (STATUS_COLOR[statusFilter] ?? 'text-corporate-ink bg-white border-corporate-line')
                 : 'text-corporate-muted bg-white border-corporate-line',
@@ -2242,6 +2246,33 @@ export function BacklogPanel({ modulo, active, piActivo, piId, onCapacityRefresh
             <option value="">Todos los estados</option>
             {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <div className="flex items-center gap-1">
+            <label className="text-xs text-corporate-muted whitespace-nowrap">F. comprometida:</label>
+            <input
+              type="date"
+              value={fechaComprometidaDesde}
+              onChange={e => setFechaComprometidaDesde(e.target.value)}
+              className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+              title="Desde fecha comprometida"
+            />
+            <span className="text-xs text-corporate-muted">–</span>
+            <input
+              type="date"
+              value={fechaComprometidaHasta}
+              onChange={e => setFechaComprometidaHasta(e.target.value)}
+              className="rounded-lg border border-corporate-line bg-white px-2 py-1.5 text-xs text-corporate-ink focus:outline-none focus:ring-1 focus:ring-allianz-blue"
+              title="Hasta fecha comprometida"
+            />
+            {(fechaComprometidaDesde || fechaComprometidaHasta) && (
+              <button
+                onClick={() => { setFechaComprometidaDesde(''); setFechaComprometidaHasta('') }}
+                className="rounded p-1 text-corporate-muted hover:text-corporate-ink"
+                title="Limpiar filtro de fecha"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
           <span className="text-xs text-corporate-muted whitespace-nowrap">
             {filtered.length}/{items.length} tickets
           </span>
