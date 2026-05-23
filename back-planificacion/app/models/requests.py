@@ -47,6 +47,7 @@ class AddPersonaCapacidadRequest(BaseModel):
 
 
 class UpdatePersonaCapacidadRequest(BaseModel):
+    nombre: Optional[str] = None
     capacidad_horas: Optional[float] = None
     reserva_estimacion_horas: Optional[float] = None
     reserva_estimacion_periodo: Optional[str] = None

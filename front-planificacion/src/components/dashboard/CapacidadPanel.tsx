@@ -679,12 +679,14 @@ function EditPersonaModal({
   persona: PersonaCapacidad
   onCancel: () => void
   onSubmit: (body: {
+    nombre?: string
     capacidad_horas?: number | null
     reserva_estimacion_horas?: number | null
     reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'
     senior?: boolean
   }) => Promise<void>
 }) {
+  const [nombre, setNombre] = useState(persona.nombre)
   const [capacidad, setCapacidad] = useState(persona.capacidad == null ? '' : String(persona.capacidad))
   const [reserva, setReserva] = useState(persona.reserva_estimacion_horas == null ? '' : String(persona.reserva_estimacion_horas))
   const [periodo, setPeriodo] = useState<'PI' | 'SEMANAL' | 'MENSUAL'>(persona.reserva_estimacion_periodo ?? 'PI')
@@ -693,10 +695,15 @@ function EditPersonaModal({
   const [error, setError] = useState<string | null>(null)
 
   async function save() {
+    if (!nombre.trim()) {
+      setError('El nombre es obligatorio')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
       await onSubmit({
+        nombre: nombre.trim(),
         capacidad_horas: capacidad.trim() === '' ? null : Number(capacidad),
         reserva_estimacion_horas: reserva.trim() === '' ? 0 : Number(reserva),
         reserva_estimacion_periodo: periodo,
@@ -716,14 +723,23 @@ function EditPersonaModal({
       <div className="relative w-full max-w-lg rounded-lg border border-corporate-line bg-white shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-corporate-line px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-corporate-ink">Editar capacidad</p>
-            <p className="mt-0.5 text-xs text-corporate-muted">{persona.nombre}</p>
+            <p className="text-sm font-semibold text-corporate-ink">Editar persona</p>
+            <p className="mt-0.5 text-xs text-corporate-muted">Datos base y capacidad del PI</p>
           </div>
           <button onClick={onCancel} className="rounded p-1 text-corporate-muted hover:bg-corporate-surface hover:text-corporate-ink" title="Cerrar">
             <X size={16} />
           </button>
         </div>
         <div className="grid gap-3 p-4 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-[11px] font-medium text-corporate-muted">Nombre</span>
+            <input
+              type="text"
+              value={nombre}
+              onChange={e => setNombre(e.target.value)}
+              className="w-full rounded border border-corporate-line px-2 py-1.5 text-xs text-corporate-ink"
+            />
+          </label>
           <label className="space-y-1">
             <span className="text-[11px] font-medium text-corporate-muted">Capacidad PI</span>
             <input
@@ -966,6 +982,7 @@ export function CapacidadPanel({ personas, piId, horasPorPersona = 0, onRefresh,
   }
 
   async function handleEditarPersona(body: {
+    nombre?: string
     capacidad_horas?: number | null
     reserva_estimacion_horas?: number | null
     reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'

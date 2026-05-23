@@ -113,7 +113,7 @@ export async function removePersonaCapacidad(piId: number, personaId: number): P
 export async function updatePersonaCapacidad(
   piId: number,
   personaId: number,
-  body: { capacidad_horas?: number | null; reserva_estimacion_horas?: number | null; reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'; senior?: boolean },
+  body: { nombre?: string; capacidad_horas?: number | null; reserva_estimacion_horas?: number | null; reserva_estimacion_periodo?: 'PI' | 'SEMANAL' | 'MENSUAL'; senior?: boolean },
 ): Promise<void> {
   const r = await authFetch(`${BASE}/config/pis/${piId}/capacidad/personas/${personaId}`, {
     method: 'PATCH',

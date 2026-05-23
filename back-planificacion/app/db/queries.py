@@ -213,6 +213,77 @@ def _split_responsables(value: str | None) -> list[str]:
     return result
 
 
+RESPONSABLE_COLUMNS = (
+    "responsable_java",
+    "responsable_cobol",
+    "responsable_dialogue",
+    "responsable_parametria",
+    "responsable_qa",
+)
+
+
+def _replace_responsable_name(value: str | None, old_name: str, new_name: str) -> str | None:
+    if not value:
+        return value
+    responsables = _split_responsables(value)
+    if not responsables:
+        return value
+    replaced = [new_name if item == old_name else item for item in responsables]
+    if replaced == responsables:
+        return value
+    return ", ".join(replaced)
+
+
+def _replace_responsable_in_extra(extra: object, old_name: str, new_name: str) -> tuple[str | None, bool]:
+    data = _json_load(extra) or {}
+    if not isinstance(data, dict):
+        return None, False
+    items = _json_load(data.get("planificacion_items")) or []
+    if not isinstance(items, list):
+        return None, False
+    changed = False
+    next_items = []
+    for item in items:
+        if isinstance(item, dict) and (item.get("responsable") or "").strip() == old_name:
+            item = {**item, "responsable": new_name}
+            changed = True
+        next_items.append(item)
+    if not changed:
+        return None, False
+    data["planificacion_items"] = next_items
+    return json.dumps(_json_safe(data), ensure_ascii=False), True
+
+
+async def _renombrar_responsable_en_backlog(conn: Any, pi_id: int, old_name: str, new_name: str) -> None:
+    for table in ("backlog_mejora_continua", "backlog_fabrica"):
+        rows = await conn.fetch(f"""
+            SELECT id, extra,
+                   responsable_java, responsable_cobol, responsable_dialogue,
+                   responsable_parametria, responsable_qa
+            FROM {table}
+            WHERE pi_id = $1
+        """, pi_id)
+        for row in rows:
+            updates: dict[str, Any] = {}
+            for column in RESPONSABLE_COLUMNS:
+                current = row[column]
+                replaced = _replace_responsable_name(current, old_name, new_name)
+                if replaced != current:
+                    updates[column] = replaced
+            extra_json, extra_changed = _replace_responsable_in_extra(row["extra"], old_name, new_name)
+            if extra_changed:
+                updates["extra"] = extra_json
+            if not updates:
+                continue
+            set_parts = [f"{column} = ${idx}" for idx, column in enumerate(updates.keys(), start=1)]
+            values = list(updates.values())
+            values.append(row["id"])
+            await conn.execute(
+                f"UPDATE {table} SET {', '.join(set_parts)} WHERE id = ${len(values)}",
+                *values,
+            )
+
+
 def _planificacion_items_from_extra(extra: object) -> list[dict]:
     data = _json_load(extra) or {}
     if not isinstance(data, dict):
@@ -712,13 +783,7 @@ async def update_persona_capacidad(
 ) -> dict | None:
     allowed = {"capacidad_horas", "reserva_estimacion_horas", "reserva_estimacion_periodo", "senior"}
     updates = {k: v for k, v in fields.items() if k in allowed}
-    if not updates:
-        row = await pool.fetchrow("""
-            SELECT persona_id, capacidad_horas, reserva_estimacion_horas::float AS reserva_estimacion_horas, reserva_estimacion_periodo, senior
-            FROM capacidad_persona_pi
-            WHERE pi_id=$1 AND persona_id=$2
-        """, pi_id, persona_id)
-        return dict(row) if row else None
+    nombre_update = fields.get("nombre")
 
     for numeric_field in ("capacidad_horas", "reserva_estimacion_horas"):
         if numeric_field in updates and updates[numeric_field] is not None:
@@ -732,17 +797,51 @@ async def update_persona_capacidad(
             raise ValueError("Periodo de reserva inválido")
         updates["reserva_estimacion_periodo"] = periodo
 
-    set_parts = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
-    await pool.execute(
-        f"UPDATE capacidad_persona_pi SET {', '.join(set_parts)} WHERE pi_id=$1 AND persona_id=$2",
-        pi_id, persona_id, *updates.values(),
-    )
-    row = await pool.fetchrow("""
-        SELECT persona_id, capacidad_horas, reserva_estimacion_horas::float AS reserva_estimacion_horas, reserva_estimacion_periodo, senior
-        FROM capacidad_persona_pi
-        WHERE pi_id=$1 AND persona_id=$2
-    """, pi_id, persona_id)
-    return dict(row) if row else None
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current = await conn.fetchrow("""
+                SELECT cpp.persona_id, p.nombre,
+                       cpp.capacidad_horas,
+                       cpp.reserva_estimacion_horas::float AS reserva_estimacion_horas,
+                       cpp.reserva_estimacion_periodo,
+                       cpp.senior
+                FROM capacidad_persona_pi cpp
+                JOIN personas p ON p.id = cpp.persona_id
+                WHERE cpp.pi_id=$1 AND cpp.persona_id=$2
+            """, pi_id, persona_id)
+            if not current:
+                return None
+
+            if isinstance(nombre_update, str):
+                new_name = nombre_update.strip()
+                if not new_name:
+                    raise ValueError("El nombre no puede estar vacío")
+                old_name = current["nombre"]
+                if new_name != old_name:
+                    await conn.execute(
+                        "UPDATE personas SET nombre=$1 WHERE id=$2",
+                        new_name, persona_id,
+                    )
+                    await _renombrar_responsable_en_backlog(conn, pi_id, old_name, new_name)
+
+            if updates:
+                set_parts = [f"{k} = ${i + 3}" for i, k in enumerate(updates.keys())]
+                await conn.execute(
+                    f"UPDATE capacidad_persona_pi SET {', '.join(set_parts)} WHERE pi_id=$1 AND persona_id=$2",
+                    pi_id, persona_id, *updates.values(),
+                )
+
+            row = await conn.fetchrow("""
+                SELECT cpp.persona_id, p.nombre,
+                       cpp.capacidad_horas,
+                       cpp.reserva_estimacion_horas::float AS reserva_estimacion_horas,
+                       cpp.reserva_estimacion_periodo,
+                       cpp.senior
+                FROM capacidad_persona_pi cpp
+                JOIN personas p ON p.id = cpp.persona_id
+                WHERE cpp.pi_id=$1 AND cpp.persona_id=$2
+            """, pi_id, persona_id)
+            return dict(row) if row else None
 
 
 async def get_novedades_disponibilidad(pool: Any, pi_id: int) -> list[dict]:
